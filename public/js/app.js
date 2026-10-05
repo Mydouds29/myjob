@@ -838,19 +838,30 @@ function renderChoixProfil() {
   const themes = [...THEMES_PROFIL,
     ['Autres compétences', Object.keys(KW_TECH).filter((l) => !classes.has(l))],
     ['Qualités', Object.keys(KW_SOFT)]];
-  $('#profil-choix').innerHTML = themes.filter(([, labels]) => labels.length).map(([titre, labels]) => `
+  const groupes = (liste) => liste.filter(([, labels]) => labels.length).map(([titre, labels]) => `
     <div class="kw-group"><h4>${esc(titre)}</h4>${labels.map((l) => `<button type="button" data-competence="${esc(l)}"
       class="chip${profil && profilContient(profil, { label: l }) ? ' have' : ''}">${esc(l)}${demandes[l] ? ` <small>${demandes[l]}</small>` : ''}</button>`).join('')}</div>`).join('');
+  // Le bloc officiel reste ouvert d'un affichage à l'autre.
+  const romeOuvert = $('#profil-choix details')?.open ?? false;
+  $('#profil-choix').innerHTML = groupes(themes) + `
+    <details${romeOuvert ? ' open' : ''}><summary>Compétences officielles France Travail (référentiel ROME)</summary>
+      <p class="hint">Savoir-faire et connaissances des fiches métiers du support, de la maintenance et de l'administration
+        systèmes, réseaux et sécurité.</p>
+      ${groupes(Object.entries(ROME_COMPETENCES))}
+    </details>`;
 }
 
 $('#profil-choix').addEventListener('click', (e) => {
   const label = e.target.closest('[data-competence]')?.dataset.competence;
   if (!label) return;
   const champ = $('#form-settings').profil;
+  const egal = (m) => m.trim().toLowerCase() === label.toLowerCase();
   const morceaux = morceauxProfil(champ.value);
-  const present = morceaux.some((l) => l.some((m) => m.toLowerCase() === label.toLowerCase()));
-  if (present) {
-    champ.value = morceaux.map((l) => l.filter((m) => m.toLowerCase() !== label.toLowerCase()).join(', '))
+  // Un intitulé officiel peut contenir des virgules : il occupe alors une ligne entière.
+  if (champ.value.split('\n').some(egal)) {
+    champ.value = champ.value.split('\n').filter((l) => !egal(l)).join('\n');
+  } else if (morceaux.some((l) => l.some(egal))) {
+    champ.value = morceaux.map((l) => l.filter((m) => !egal(m)).join(', '))
       .filter(Boolean).join('\n');
   } else if (champ.value && profilContient(champ.value, { label })) {
     toast('Déjà dans votre profil sous un autre nom : modifiez le texte pour la retirer.');
