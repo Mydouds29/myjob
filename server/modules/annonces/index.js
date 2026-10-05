@@ -1,8 +1,14 @@
 // Module Annonces : à partir du lien d'une annonce, récupère l'entreprise,
 // le poste, le lieu, le contrat, le salaire et le texte de l'offre.
+// Le favori « Envoyer à MyJob » envoie aussi la page que le navigateur
+// affiche (utile pour les sites qui bloquent la lecture automatique).
 
 import { telechargerPage } from './telechargement.js';
-import { extraireAnnonce } from './extraction.js';
+import { extraireAnnonce, contratDepuisTexte, teletravailDepuisTexte } from './extraction.js';
+
+const TAILLE_MAX_PAGE = 1024 * 1024;
+
+const chaine = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 export default {
   nom: 'annonces',
@@ -21,6 +27,33 @@ export default {
         throw httpError(422, 'Aucune information trouvée sur cette page. Copiez-collez le texte de l\'annonce.');
       }
       res.json(annonce);
+    });
+
+    // Page envoyée par le favori : extrait réduit de la page (données
+    // JobPosting, balises meta, texte de l'annonce) et champs lus à l'écran.
+    router.post('/annonces/page', (req, res) => {
+      const b = req.body || {};
+      const url = chaine(b.url, 2000);
+      if (!/^https?:\/\//i.test(url)) throw httpError(400, 'Lien de la page invalide.');
+      const html = chaine(b.html, TAILLE_MAX_PAGE);
+      const a = extraireAnnonce(html, url);
+
+      // Champs lus directement sur la page : ils complètent ou remplacent le
+      // repli « titre de la page », mais pas les données JobPosting.
+      const champs = b.champs && typeof b.champs === 'object' ? b.champs : {};
+      for (const k of ['poste', 'entreprise', 'lieu']) {
+        const v = chaine(champs[k], 300).split('\n')[0].trim();
+        if (v && (!a[k] || a.methode !== 'jsonld')) a[k] = v;
+      }
+      // Texte sélectionné par l'utilisateur : c'est lui qui fait foi.
+      const selection = chaine(b.selection, 30000);
+      if (selection.length > 40) {
+        a.texteOffre = selection;
+        a.contrat ||= contratDepuisTexte(selection) || undefined;
+        a.teletravail ||= teletravailDepuisTexte(selection) || undefined;
+      }
+      Object.keys(a).forEach((k) => { if (a[k] === '' || a[k] === undefined) delete a[k]; });
+      res.json(a);
     });
   },
 };

@@ -167,7 +167,7 @@ export function extraireAnnonce(html, url) {
   r.contrat ||= contratDepuisTexte(tout);
   r.teletravail ||= teletravailDepuisTexte(tout);
   r.source = sourceDepuisUrl(url) || meta(html, 'og:site_name');
-  r.lien = url;
+  r.lien = lienCanonique(url);
   Object.keys(r).forEach((k) => { if (r[k] === '') delete r[k]; });
   return r;
 }
@@ -187,6 +187,24 @@ const SOURCES = [
   [/ouestjob\.|ouest-france/, 'Ouest-France Emploi'],
   [/choisirleservicepublic\.gouv\.fr|place-emploi-public/, 'Emploi public'],
 ];
+
+// Lien direct vers l'annonce quand on l'a ouverte depuis une page de
+// résultats (Indeed : ?vjk=, LinkedIn : ?currentJobId=).
+export function lienCanonique(url) {
+  try {
+    const u = new URL(url);
+    const p = u.searchParams;
+    if (/(^|\.)indeed\./.test(u.hostname)) {
+      const jk = p.get('vjk') || p.get('jk');
+      if (/^[0-9a-f]{16}$/i.test(jk || '')) return `${u.origin}/viewjob?jk=${jk}`;
+    }
+    if (/(^|\.)linkedin\.com$/.test(u.hostname)) {
+      const id = p.get('currentJobId') || u.pathname.match(/\/jobs\/view\/(?:[^/]*-)?(\d+)/)?.[1];
+      if (/^\d+$/.test(id || '')) return `https://www.linkedin.com/jobs/view/${id}/`;
+    }
+    return url;
+  } catch { return url; }
+}
 
 export function sourceDepuisUrl(url) {
   try {

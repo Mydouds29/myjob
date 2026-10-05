@@ -18,6 +18,15 @@ const TYPES_REPONSE = { entretien: 'Proposition d\'entretien', refus: 'Refus', o
 
 let state = { offres: [], documents: [], reglages: {}, utilisateur: {} };
 
+// Annonce envoyée par le favori « Envoyer à MyJob » (dans l'adresse, après #annonce=).
+// Gardée dans l'onglet le temps d'une éventuelle connexion, puis retirée de l'adresse.
+let annonceRecue = null;
+if (location.hash.startsWith('#annonce=')) {
+  annonceRecue = location.hash.slice('#annonce='.length);
+  try { sessionStorage.setItem('myjob-annonce', annonceRecue); } catch { /* navigation privée */ }
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
 // ---------- Accès au serveur ----------
 
 async function api(method, url, body) {
@@ -516,7 +525,27 @@ $('#form-offre').addEventListener('change', (e) => {
   }
 });
 
-// Remplit les champs encore vides à partir de la page de l'annonce.
+// Remplit les champs encore vides du formulaire avec les informations de l'annonce.
+function remplirDepuisAnnonce(form, a) {
+  const remplis = [];
+  ['entreprise', 'poste', 'lieu', 'reference', 'source', 'contrat', 'teletravail', 'salaire', 'texteOffre'].forEach((k) => {
+    if (a[k] && !form[k].value.trim()) {
+      if (form[k].tagName === 'SELECT' && ![...form[k].options].some((o) => o.value === a[k])) return;
+      form[k].value = a[k];
+      remplis.push(k);
+    }
+  });
+  if (a.lien) form.lien.value = a.lien;
+  if (a.dateLimite) form.notes.value = [form.notes.value, `Date limite de candidature : ${fmtDate(a.dateLimite)}`].filter(Boolean).join('\n');
+  if (form.texteOffre.value) {
+    $('#section-texte').open = true;
+    renderAnalyse(analyseOffre(form.texteOffre.value));
+  }
+  toast(remplis.length
+    ? `${remplis.length} champ${remplis.length > 1 ? 's' : ''} rempli${remplis.length > 1 ? 's' : ''}${a.entreprise ? '' : ' (entreprise non trouvée, à compléter)'}`
+    : 'Les champs étaient déjà remplis.');
+}
+
 $('#btn-lire-annonce').addEventListener('click', (e) => run(async () => {
   const form = $('#form-offre');
   const url = form.lien.value.trim();
@@ -525,24 +554,7 @@ $('#btn-lire-annonce').addEventListener('click', (e) => run(async () => {
   btn.disabled = true;
   btn.textContent = 'Lecture…';
   try {
-    const a = await api('POST', 'annonces/lire', { url });
-    const remplis = [];
-    ['entreprise', 'poste', 'lieu', 'reference', 'source', 'contrat', 'teletravail', 'salaire', 'texteOffre'].forEach((k) => {
-      if (a[k] && !form[k].value.trim()) {
-        if (form[k].tagName === 'SELECT' && ![...form[k].options].some((o) => o.value === a[k])) return;
-        form[k].value = a[k];
-        remplis.push(k);
-      }
-    });
-    if (a.lien && a.lien !== url) form.lien.value = a.lien;
-    if (a.dateLimite) form.notes.value = [form.notes.value, `Date limite de candidature : ${fmtDate(a.dateLimite)}`].filter(Boolean).join('\n');
-    if (form.texteOffre.value) {
-      $('#section-texte').open = true;
-      renderAnalyse(analyseOffre(form.texteOffre.value));
-    }
-    toast(remplis.length
-      ? `${remplis.length} champ${remplis.length > 1 ? 's' : ''} rempli${remplis.length > 1 ? 's' : ''}${a.entreprise ? '' : ' (entreprise non trouvée, à compléter)'}`
-      : 'Les champs étaient déjà remplis.');
+    remplirDepuisAnnonce(form, await api('POST', 'annonces/lire', { url }));
   } finally {
     btn.disabled = false;
     btn.textContent = 'Remplir depuis le lien';
@@ -949,8 +961,81 @@ function renderAll() {
 $('#filter-statut').innerHTML += STATUTS
   .map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
 
+// ---------- Favori « Envoyer à MyJob » ----------
+
+// Ce code s'exécute sur la page de l'annonce (Indeed, LinkedIn…) quand on
+// clique sur le favori : il lit ce que le navigateur affiche et l'ouvre dans
+// MyJob. Il doit rester autonome (aucune fonction de ce fichier n'y est connue).
+function envoyerAMyJob() {
+  const ORIGINE = '__ORIGINE__';
+  const lire = (sels) => {
+    for (const s of sels) {
+      const t = document.querySelector(s)?.innerText?.trim();
+      if (t) return t;
+    }
+    return '';
+  };
+  const echapper = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const meta = (n) => document.querySelector(`meta[property="${n}"],meta[name="${n}"]`)?.content || '';
+  const jsonld = [...document.querySelectorAll('script[type="application/ld+json"]')]
+    .map((s) => s.textContent).filter((t) => t.includes('JobPosting'));
+  const texte = lire(['#jobDescriptionText', '.jobs-description__content', '#job-details', 'main', 'article', 'body']);
+  const html = `<title>${echapper(document.title)}</title>`
+    + ['og:title', 'og:description', 'og:site_name', 'description']
+      .map((n) => `<meta property="${n}" content="${echapper(meta(n))}">`).join('')
+    + jsonld.map((j) => `<script type="application/ld+json">${j.replace(/<\//g, '<\\/')}</script>`).join('')
+    + `<main>${echapper(texte.slice(0, 30000)).replace(/\n/g, '<br>')}</main>`;
+  const donnees = {
+    url: location.href,
+    html: html.slice(0, 300000),
+    selection: String(getSelection() || '').trim().slice(0, 30000),
+    champs: {
+      poste: lire(['[data-testid="jobsearch-JobInfoHeader-title"]', '.jobsearch-JobInfoHeader-title',
+        '.job-details-jobs-unified-top-card__job-title', '.top-card-layout__title']),
+      entreprise: lire(['[data-testid="inlineHeader-companyName"]', '[data-company-name="true"]',
+        '.job-details-jobs-unified-top-card__company-name', '.topcard__org-name-link']),
+      lieu: lire(['[data-testid="inlineHeader-companyLocation"]', '[data-testid="job-location"]',
+        '[data-testid="jobsearch-JobInfoHeader-companyLocation"]']),
+    },
+  };
+  const adresse = `${ORIGINE}/#annonce=${encodeURIComponent(JSON.stringify(donnees))}`;
+  if (!window.open(adresse, '_blank')) location.href = adresse;
+}
+
+function renderFavori() {
+  const code = `(${envoyerAMyJob.toString().replace('__ORIGINE__', location.origin)})()`;
+  $('#favori-myjob').href = `javascript:${encodeURIComponent(code)}`;
+}
+
+$('#favori-myjob').addEventListener('click', (e) => {
+  e.preventDefault();
+  toast('Faites glisser ce bouton dans la barre de favoris.');
+});
+
+// Ouvre une nouvelle candidature remplie avec l'annonce reçue du favori.
+async function recevoirAnnonce() {
+  let brut = annonceRecue;
+  try {
+    brut ??= sessionStorage.getItem('myjob-annonce');
+    sessionStorage.removeItem('myjob-annonce');
+  } catch { /* navigation privée */ }
+  if (!brut) return;
+  let donnees;
+  try { donnees = JSON.parse(decodeURIComponent(brut)); } catch { throw new Error('Annonce reçue illisible.'); }
+  const a = await api('POST', 'annonces/page', donnees);
+  openOffre();
+  const form = $('#form-offre');
+  // On garde l'annonce de côté : la candidature n'est pas encore envoyée.
+  form.statut.value = 'a_postuler';
+  form.dateCandidature.value = '';
+  form.dateRelance.value = '';
+  remplirDepuisAnnonce(form, { lien: donnees.url, ...a });
+}
+
 run(async () => {
   await chargerEtat();
   applyTheme();
   renderAll();
+  renderFavori();
+  await recevoirAnnonce();
 });
