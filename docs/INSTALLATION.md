@@ -45,9 +45,8 @@ Le site est alors accessible sur `https://myjob.mydouds.fr`, depuis l'ordinateur
 
 ## 4. Réglages dans le site
 
-Tout le reste se règle dans le site, page **Paramètres** :
+Tout le reste se règle dans le site. L'onglet **Mon profil** contient le nom, la ville et les compétences (utilisés pour les lettres et l'analyse des offres), avec une liste de compétences à cocher. L'onglet **Paramètres** contient les réglages de l'application :
 
-- **Mon profil** : nom, ville et compétences (utilisés pour les lettres et l'analyse des offres) ;
 - **Rappels par e-mail** : adresse qui reçoit les rappels, adresse Gmail d'envoi et **mot de passe d'application** Gmail
   (à créer sur <https://myaccount.google.com/apppasswords>, la validation en deux étapes doit être active). Le bouton « Envoyer un e-mail de test » vérifie la configuration ;
 - **Comptes** (administrateur) : créer d'autres comptes, chacun avec ses propres données et réglages.

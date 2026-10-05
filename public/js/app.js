@@ -474,7 +474,7 @@ function renderAnalyse(res) {
     const n = res.tech.filter((k) => profilContient(profil, k)).length;
     match = `<p class="match">Vous avez <strong>${n} des ${res.tech.length}</strong> compétences techniques repérées (✓). Mettez-les en avant dans la lettre.</p>`;
   } else if (res.tech.length) {
-    match = '<p class="hint">Renseignez vos compétences dans Paramètres pour voir celles que vous avez déjà.</p>';
+    match = '<p class="hint">Renseignez vos compétences dans Mon profil pour voir celles que vous avez déjà.</p>';
   }
   el.innerHTML = (match + group('Compétences techniques', res.tech, 'tech')
     + group('Qualités attendues', res.soft, 'soft')
@@ -793,7 +793,7 @@ $('#form-doc').addEventListener('submit', async (e) => {
 function renderSettings() {
   const form = $('#form-settings');
   const r = state.reglages;
-  ['theme', 'delaiRelance', 'nomComplet', 'ville', 'profil', 'emailDestinataire', 'smtpUser', 'smtpHost', 'smtpPort', 'ftClientId']
+  ['theme', 'delaiRelance', 'emailDestinataire', 'smtpUser', 'smtpHost', 'smtpPort', 'ftClientId']
     .forEach((k) => { if (document.activeElement !== form[k]) form[k].value = r[k] ?? ''; });
   form.alerteRelances.checked = r.alerteRelances;
   form.emailRelances.checked = r.emailRelances;
@@ -805,6 +805,15 @@ function renderSettings() {
   form.ftClientSecret.placeholder = r.ftClientSecretDefini ? garde : '';
   $('#user-name').textContent = state.utilisateur.username || '';
   $('#card-users').hidden = !state.utilisateur.isAdmin;
+  renderProfil();
+}
+
+// ---------- Mon profil ----------
+
+function renderProfil() {
+  const form = $('#form-profil');
+  ['nomComplet', 'ville', 'profil']
+    .forEach((k) => { if (document.activeElement !== form[k]) form[k].value = state.reglages[k] ?? ''; });
   renderChoixProfil();
 }
 
@@ -826,7 +835,7 @@ const THEMES_PROFIL = [
 const morceauxProfil = (profil) => profil.split('\n').map((l) => l.split(',').map((m) => m.trim()));
 
 function renderChoixProfil() {
-  const profil = $('#form-settings').profil.value;
+  const profil = $('#form-profil').profil.value;
   // Nombre d'annonces enregistrées qui demandent chaque compétence.
   const demandes = {};
   state.offres.forEach((o) => {
@@ -854,7 +863,7 @@ function renderChoixProfil() {
 $('#profil-choix').addEventListener('click', (e) => {
   const label = e.target.closest('[data-competence]')?.dataset.competence;
   if (!label) return;
-  const champ = $('#form-settings').profil;
+  const champ = $('#form-profil').profil;
   const egal = (m) => m.trim().toLowerCase() === label.toLowerCase();
   const morceaux = morceauxProfil(champ.value);
   // Un intitulé officiel peut contenir des virgules : il occupe alors une ligne entière.
@@ -882,9 +891,6 @@ $('#form-settings').addEventListener('change', (e) => {
     theme: form.theme.value,
     delaiRelance: Math.max(0, parseInt(form.delaiRelance.value, 10) || 0),
     alerteRelances: form.alerteRelances.checked,
-    nomComplet: form.nomComplet.value,
-    ville: form.ville.value,
-    profil: form.profil.value,
     emailRelances: form.emailRelances.checked,
     emailDestinataire: form.emailDestinataire.value,
     smtpUser: form.smtpUser.value.trim(),
@@ -905,6 +911,18 @@ $('#form-settings').addEventListener('change', (e) => {
     renderSettings();
     renderOffres();
     toast('Réglages enregistrés');
+  }));
+});
+
+$('#form-profil').addEventListener('change', (e) => {
+  if (!e.target.name) return;
+  const form = e.currentTarget;
+  const values = { nomComplet: form.nomComplet.value, ville: form.ville.value, profil: form.profil.value };
+  saveQueue = saveQueue.then(() => run(async () => {
+    state.reglages = await api('PUT', 'reglages', values);
+    renderProfil();
+    renderOffres();
+    toast('Profil enregistré');
   }));
 });
 

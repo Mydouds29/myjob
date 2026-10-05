@@ -14,6 +14,7 @@
       <button class="tab active" data-view="offres" role="tab">Candidatures</button>
       <button class="tab" data-view="entreprises" role="tab">Entreprises</button>
       <button class="tab" data-view="documents" role="tab">CV &amp; lettres</button>
+      <button class="tab" data-view="profil" role="tab">Mon profil</button>
       <button class="tab" data-view="parametres" role="tab">Paramètres</button>
     </nav>
     <span id="user-name" class="user"></span>
@@ -92,6 +93,26 @@
       </div>
     </section>
 
+    <!-- Vue profil -->
+    <section id="view-profil" class="view" hidden>
+      <form id="form-profil" class="settings" autocomplete="off">
+        <div class="card">
+          <h2>Mon profil</h2>
+          <label>Nom complet (pour les lettres : {nom})<input name="nomComplet"></label>
+          <label>Ville (pour les lettres : {ville})<input name="ville"></label>
+          <label>Mes compétences, une par ligne ou séparées par des virgules
+            <textarea name="profil" rows="16" placeholder="Windows, Active Directory, GLPI, maintenance matériel, réseau…"></textarea>
+          </label>
+          <p class="hint">L'analyse des offres indique les compétences demandées que vous avez déjà (✓).</p>
+          <details id="choix-profil">
+            <summary>Choisir dans une liste</summary>
+            <p class="hint">Cliquez pour ajouter ou retirer une compétence. Le nombre indique dans combien de vos annonces elle est demandée.</p>
+            <div id="profil-choix"></div>
+          </details>
+        </div>
+      </form>
+    </section>
+
     <!-- Vue paramètres -->
     <section id="view-parametres" class="view" hidden>
       <form id="form-settings" class="settings" autocomplete="off">
@@ -119,21 +140,6 @@
           <div class="row">
             <a class="btn primary" id="favori-myjob" href="#">Envoyer à MyJob</a>
           </div>
-        </div>
-
-        <div class="card">
-          <h2>Mon profil</h2>
-          <label>Nom complet (pour les lettres : {nom})<input name="nomComplet"></label>
-          <label>Ville (pour les lettres : {ville})<input name="ville"></label>
-          <label>Mes compétences, une par ligne ou séparées par des virgules
-            <textarea name="profil" rows="6" placeholder="Windows, Active Directory, GLPI, maintenance matériel, réseau…"></textarea>
-          </label>
-          <p class="hint">L'analyse des offres indique les compétences demandées que vous avez déjà (✓).</p>
-          <details id="choix-profil">
-            <summary>Choisir dans une liste</summary>
-            <p class="hint">Cliquez pour ajouter ou retirer une compétence. Le nombre indique dans combien de vos annonces elle est demandée.</p>
-            <div id="profil-choix"></div>
-          </details>
         </div>
 
         <div class="card">
