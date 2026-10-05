@@ -86,8 +86,10 @@ export async function createApp() {
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     const status = err.status || err.statusCode || 500;
-    if (status >= 500) console.error(err);
-    res.status(status).json({ error: status >= 500 ? 'Erreur interne du serveur' : err.message });
+    // Seules les erreurs prévues (avec un code) ont un message montré à l'utilisateur.
+    const prevue = Boolean(err.status || err.statusCode);
+    if (!prevue) console.error(err);
+    res.status(status).json({ error: prevue ? err.message : 'Erreur interne du serveur' });
   });
 
   for (const m of modules) await m.demarrer?.(ctx);

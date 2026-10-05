@@ -336,6 +336,39 @@ $('#form-offre').addEventListener('change', (e) => {
   }
 });
 
+// Remplit les champs encore vides à partir de la page de l'annonce.
+$('#btn-lire-annonce').addEventListener('click', (e) => run(async () => {
+  const form = $('#form-offre');
+  const url = form.lien.value.trim();
+  if (!url) throw new Error('Collez d\'abord le lien de l\'annonce.');
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = 'Lecture…';
+  try {
+    const a = await api('POST', 'annonces/lire', { url });
+    const remplis = [];
+    ['entreprise', 'poste', 'lieu', 'reference', 'source', 'contrat', 'teletravail', 'salaire', 'texteOffre'].forEach((k) => {
+      if (a[k] && !form[k].value.trim()) {
+        if (form[k].tagName === 'SELECT' && ![...form[k].options].some((o) => o.value === a[k])) return;
+        form[k].value = a[k];
+        remplis.push(k);
+      }
+    });
+    if (a.lien && a.lien !== url) form.lien.value = a.lien;
+    if (a.dateLimite) form.notes.value = [form.notes.value, `Date limite de candidature : ${fmtDate(a.dateLimite)}`].filter(Boolean).join('\n');
+    if (form.texteOffre.value) {
+      $('#section-texte').open = true;
+      renderAnalyse(analyseOffre(form.texteOffre.value));
+    }
+    toast(remplis.length
+      ? `${remplis.length} champ${remplis.length > 1 ? 's' : ''} rempli${remplis.length > 1 ? 's' : ''}${a.entreprise ? '' : ' (entreprise non trouvée, à compléter)'}`
+      : 'Les champs étaient déjà remplis.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Remplir depuis le lien';
+  }
+}));
+
 $('#btn-analyse').addEventListener('click', () => {
   renderAnalyse(analyseOffre($('#form-offre').texteOffre.value));
 });

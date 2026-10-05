@@ -6,6 +6,7 @@ Chaque dossier de `server/modules/` est un module chargé automatiquement au dé
 |---|---|
 | `comptes` | connexion, réglages du compte, mot de passe, gestion des comptes |
 | `candidatures` | candidatures, statuts, relances, historique |
+| `annonces` | remplissage d'une candidature depuis le lien de l'annonce |
 | `documents` | CV, lettres, modèles et leurs fichiers |
 | `lettres` | génération des lettres Word depuis un modèle |
 | `rappels` | e-mail quotidien des relances à faire |

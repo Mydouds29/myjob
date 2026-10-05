@@ -5,6 +5,7 @@ Site personnel pour suivre ses candidatures à des offres d'emploi, avec les CV 
 ## Fonctionnalités
 
 - **Candidatures** : réponse à une offre ou candidature spontanée ; entreprise, poste, lieu, lien et référence de l'annonce, source, contact, contrat, télétravail, salaire, notes.
+- **Remplissage depuis le lien** : on colle le lien de l'annonce, le site remplit l'entreprise, le poste, le lieu, le contrat, le télétravail, le salaire, la référence et le texte (données « JobPosting » publiées par la plupart des sites d'emploi ; certains sites comme Indeed bloquent la lecture automatique).
 - **Texte de l'offre et mots-clés** : on colle l'annonce, l'analyse repère les compétences techniques IT, les qualités attendues et les mots les plus répétés, et indique celles de votre profil (✓). Le bouton « Préparer pour Claude » copie une demande prête à coller dans Claude (analyse + brouillon de lettre).
 - **Lettres Word** : modèles de lettre (texte saisi dans le site, ou fichier Word importé dont la mise en page est conservée) avec `{entreprise}`, `{poste}`, `{competences}`, `{date}`, `{nom}`, `{ville}` remplis automatiquement ; téléchargement en `.docx`.
 - **CV & lettres** : import des fichiers (Word, PDF, LibreOffice), associés à chaque candidature.

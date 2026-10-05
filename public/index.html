@@ -173,11 +173,18 @@
         <label><input type="radio" name="type" value="offre" checked> Réponse à une offre</label>
         <label><input type="radio" name="type" value="spontanee"> Candidature spontanée</label>
       </div>
+      <div class="only-offre lien-annonce">
+        <label>Lien de l'annonce
+          <span class="row">
+            <input name="lien" type="url" placeholder="Collez le lien (France Travail, HelloWork, LinkedIn…)">
+            <button type="button" id="btn-lire-annonce" class="btn primary">Remplir depuis le lien</button>
+          </span>
+        </label>
+      </div>
       <div class="grid">
         <label>Entreprise *<input name="entreprise" required></label>
         <label>Poste<input name="poste" placeholder="ex. Technicien support N2"></label>
         <label>Lieu<input name="lieu" placeholder="Ville, télétravail…"></label>
-        <label class="only-offre">Lien de l'offre<input name="lien" type="url" placeholder="https://"></label>
         <label class="only-offre">Référence de l'annonce<input name="reference"></label>
         <label>Source<input name="source" placeholder="France Travail, LinkedIn, Indeed, réseau…"></label>
         <label>Contact<input name="contact" placeholder="Nom, e-mail, téléphone"></label>

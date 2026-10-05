@@ -287,3 +287,7 @@ a.btn { text-decoration: none; display: inline-block; }
 }
 .toast.err { background: var(--danger); color: #fff; }
 .fichier-actuel { font-size: 13px; color: var(--muted); margin: -6px 0 12px; }
+
+.lien-annonce { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px 0; margin-bottom: 14px; }
+.lien-annonce .row { flex-wrap: nowrap; }
+@media (max-width: 700px) { .lien-annonce .row { flex-wrap: wrap; } .lien-annonce .btn { width: 100%; } }
