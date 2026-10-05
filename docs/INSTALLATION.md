@@ -100,6 +100,33 @@ bash /opt/myjob/deploy/update.sh
 
 Le script fait une sauvegarde, récupère la dernière version, met à jour les dépendances et redémarre le site.
 
+## 7. Analyse des annonces par Claude (facultatif)
+
+Le bouton **Analyser avec Claude** (texte de l'offre) fait lire l'annonce par Claude avec **votre abonnement Claude** (Pro ou Max) : résumé, missions, compétences, atouts et manques par rapport à votre profil, points de vigilance. Les analyses comptent dans les limites d'usage de l'abonnement, comme claude.ai et Claude Code. Claude ne reçoit aucun outil : il lit le texte envoyé et répond, rien d'autre.
+
+1. **Installer Claude Code** dans le conteneur, depuis le dépôt signé d'Anthropic (empreinte de la clé à vérifier : `31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE`). Claude Code demande 4 Go de RAM : augmenter la mémoire du conteneur si besoin.
+
+   ```bash
+   apt install -y gnupg
+   install -d -m 0755 /etc/apt/keyrings
+   curl -fsSL https://downloads.claude.ai/keys/claude-code.asc -o /etc/apt/keyrings/claude-code.asc
+   gpg --show-keys /etc/apt/keyrings/claude-code.asc
+   echo "deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude.ai/claude-code/apt/stable stable main" \
+     > /etc/apt/sources.list.d/claude-code.list
+   apt update && apt install -y claude-code
+   ```
+
+2. **Créer un jeton** sur un ordinateur où Claude Code est installé, avec le compte de l'abonnement : `claude setup-token`. Le jeton (valable un an) s'affiche une seule fois.
+
+3. **Le donner à MyJob**, sans qu'il apparaisse à l'écran :
+
+   ```bash
+   read -rsp "Jeton : " T && echo && sed -i '/^CLAUDE_CODE_OAUTH_TOKEN=/d' /etc/myjob/myjob.env \
+     && echo "CLAUDE_CODE_OAUTH_TOKEN=$T" >> /etc/myjob/myjob.env && unset T && systemctl restart myjob
+   ```
+
+Le bouton apparaît dans le formulaire dès que le jeton est en place. Pour changer de modèle, ajouter par exemple `MYJOB_CLAUDE_MODEL=sonnet` dans `/etc/myjob/myjob.env`.
+
 ## Comptes en ligne de commande
 
 ```bash

@@ -305,6 +305,7 @@ function openOffre(id) {
   $('#histo-date').value = d;
   $('#histo-texte').value = '';
   renderAnalyse(editing.texteOffre ? analyseOffre(editing.texteOffre) : null);
+  renderAnalyseIA(editing.analyseIA);
   renderHistorique();
   $('#dlg-offre').showModal();
 }
@@ -558,6 +559,47 @@ $('#btn-lire-annonce').addEventListener('click', (e) => run(async () => {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Remplir depuis le lien';
+  }
+}));
+
+// ---------- Analyse par Claude ----------
+
+function renderAnalyseIA(a) {
+  const el = $('#analyse-ia');
+  $('#btn-analyse-ia').hidden = !state.analyseDisponible;
+  if (!a) { el.innerHTML = ''; return; }
+  const puces = (titre, items) => (items?.length
+    ? `<h4>${titre}</h4><ul>${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '');
+  const competences = (a.competences || []).map((c) => `<span class="chip${c.importance === 'indispensable' ? ' tech' : ''}${c.dansLeProfil ? ' have' : ''}"
+    title="${esc(c.importance)}">${esc(c.intitule)}</span>`).join('');
+  const note = Math.min(5, Math.max(0, Math.round(Number(a.adequation?.note) || 0)));
+  el.innerHTML = `
+    <h4>Analyse de Claude${a.date ? ` du ${fmtDate(a.date)}` : ''}</h4>
+    <p>${esc(a.resume)}</p>
+    <p class="note-ia">Adéquation avec votre profil : ${'★'.repeat(note)}${'☆'.repeat(5 - note)}</p>
+    <p>${esc(a.adequation?.explication)}</p>
+    ${puces('Missions principales', a.missions)}
+    ${competences ? `<h4>Compétences demandées (en couleur : indispensables, ✓ : dans votre profil)</h4><div>${competences}</div>` : ''}
+    ${puces('Vos atouts', a.atouts)}
+    ${puces('Ce qui manque, et comment le compenser', a.manques)}
+    ${puces('À mettre en avant', a.aMettreEnAvant)}
+    ${puces('Points de vigilance', a.vigilance)}`;
+}
+
+$('#btn-analyse-ia').addEventListener('click', (e) => run(async () => {
+  const form = $('#form-offre');
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = 'Claude lit l\'annonce… (1 à 2 min)';
+  try {
+    const champs = Object.fromEntries(['poste', 'entreprise', 'lieu', 'contrat', 'salaire', 'texteOffre']
+      .map((k) => [k, form[k].value]));
+    editing.analyseIA = await api('POST', 'analyse', champs);
+    renderAnalyseIA(editing.analyseIA);
+    toast('Analyse terminée : pensez à enregistrer la candidature.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analyser avec Claude';
   }
 }));
 
