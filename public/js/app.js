@@ -67,6 +67,7 @@ function normaliser(o) {
   o.historique ??= [];
   o.motsCles ??= [];
   o.reponses ??= [];
+  o.entretiens ??= [];
   return o;
 }
 
@@ -157,6 +158,24 @@ function renderStats() {
       <div class="n">${delaiMoyen} j</div><div class="l">Délai de réponse</div></div>`}`;
 }
 
+const fmtHeure = (h) => (h ? h.replace(':', 'h') : '');
+
+function entretiensAVenir() {
+  return state.offres.flatMap((o) => o.entretiens.filter((e) => e.date >= today()).map((e) => ({ ...e, offre: o })))
+    .sort((a, b) => `${a.date}${a.heure}`.localeCompare(`${b.date}${b.heure}`));
+}
+
+function renderEntretiensAVenir() {
+  const list = entretiensAVenir();
+  const el = $('#entretiens-a-venir');
+  el.hidden = list.length === 0;
+  el.innerHTML = list.length
+    ? `<strong>${list.length > 1 ? 'Prochains entretiens' : 'Prochain entretien'} :</strong> `
+      + list.map((e) => `<a href="#" data-edit-offre="${e.offre.id}">${esc(e.offre.entreprise)}</a>
+        le ${e.date === today() ? '<strong>aujourd\'hui</strong>' : fmtDate(e.date)}${e.heure ? ` à ${fmtHeure(e.heure)}` : ''} (${esc(e.format)})`).join(' · ')
+    : '';
+}
+
 function renderRelances() {
   const dues = state.offres.filter(relanceDue);
   const el = $('#relances');
@@ -168,7 +187,8 @@ function renderRelances() {
 }
 
 function searchText(o) {
-  const histo = o.historique.map((h) => h.texte).concat(o.reponses.map((r) => r.message)).join(' ');
+  const histo = o.historique.map((h) => h.texte).concat(o.reponses.map((r) => r.message))
+    .concat(o.entretiens.flatMap((e) => [e.interlocuteurs, e.preparation, e.compteRendu])).join(' ');
   return [o.entreprise, o.poste, o.lieu, o.source, o.contact, o.reference, o.contrat,
     o.notes, o.texteOffre, histo, o.motsCles.join(' ')].join(' ').toLowerCase();
 }
@@ -191,6 +211,7 @@ function filteredOffres() {
 
 function renderOffres() {
   renderStats();
+  renderEntretiensAVenir();
   renderRelances();
   const rows = filteredOffres();
   $('#offres-body').innerHTML = rows.map((o) => {
@@ -253,7 +274,7 @@ function openOffre(id) {
   editing = existing
     ? structuredClone(existing)
     : {
-      type: 'offre', statut: 'postule', dateCandidature: d, historique: [], motsCles: [], reponses: [],
+      type: 'offre', statut: 'postule', dateCandidature: d, historique: [], motsCles: [], reponses: [], entretiens: [],
       dateRelance: delai > 0 ? addDays(d, delai) : '',
     };
   form.reset();
@@ -265,6 +286,9 @@ function openOffre(id) {
   setOffreType(editing.type);
   $('#section-texte').open = !existing || Boolean(editing.texteOffre);
   $('#section-historique').open = editing.historique.length > 0;
+  $('#section-entretiens').open = editing.entretiens.length > 0;
+  resetEntretienForm();
+  renderEntretiens();
   $('#section-reponses').open = editing.reponses.length > 0;
   $('#rep-date').value = d;
   $('#rep-message').value = '';
@@ -283,6 +307,117 @@ function renderHistorique() {
     <li><time>${fmtDate(h.date)}</time><span>${esc(h.texte)}</span>
       <button type="button" data-del-histo="${h.id}" title="Supprimer">✕</button></li>`).join('');
 }
+
+// ---------- Entretiens ----------
+
+const ENT_CHAMPS = { date: 'ent-date', heure: 'ent-heure', format: 'ent-format', etape: 'ent-etape', lieu: 'ent-lieu',
+  interlocuteurs: 'ent-interlocuteurs', preparation: 'ent-preparation', compteRendu: 'ent-compte-rendu', ressenti: 'ent-ressenti' };
+const RESSENTI = { 1: '😟 Mauvais', 2: '😐 Moyen', 3: '🙂 Bon', 4: '😀 Très bon' };
+
+function resetEntretienForm() {
+  Object.values(ENT_CHAMPS).forEach((id) => { $(`#${id}`).value = ''; });
+  $('#ent-format').value = 'sur place';
+  $('#ent-etape').selectedIndex = 0;
+  $('#ent-id').value = '';
+  $('#entretien-titre').textContent = 'Nouvel entretien';
+  $('#btn-ent-save').textContent = 'Ajouter l\'entretien';
+  $('#btn-ent-cancel').hidden = true;
+}
+
+function renderEntretiens() {
+  const items = [...editing.entretiens].sort((a, b) => `${b.date}${b.heure}`.localeCompare(`${a.date}${a.heure}`));
+  $('#entretiens').innerHTML = items.map((e) => {
+    const avenir = e.date >= today();
+    const lieu = safeUrl(e.lieu) ? `<a href="${esc(e.lieu)}" target="_blank" rel="noopener">${esc(e.lieu)}</a>` : esc(e.lieu);
+    return `<li><div class="entete"><span class="badge ${avenir ? 'r-avenir' : 'r-passe'}">${avenir ? 'À venir' : 'Passé'}</span>
+      <strong>${esc(e.etape)}</strong><time>${fmtDate(e.date)}${e.heure ? ` à ${fmtHeure(e.heure)}` : ''} · ${esc(e.format)}</time></div>
+      <div class="details">${[lieu, esc(e.interlocuteurs), RESSENTI[e.ressenti] ? `Ressenti : ${RESSENTI[e.ressenti]}` : ''].filter(Boolean).join(' · ')}</div>
+      ${e.preparation ? `<p class="message"><strong>Préparation</strong>\n${esc(e.preparation)}</p>` : ''}
+      ${e.compteRendu ? `<p class="message"><strong>Compte rendu</strong>\n${esc(e.compteRendu)}</p>` : ''}
+      <div class="actions-ent">
+        <button type="button" class="btn small" data-edit-ent="${e.id}">Modifier</button>
+        <button type="button" class="btn small" data-ics-ent="${e.id}" title="Fichier à ouvrir avec Google Agenda, Outlook ou le téléphone">Ajouter à l'agenda</button>
+        <button type="button" class="btn small danger" data-del-ent="${e.id}">Supprimer</button>
+      </div></li>`;
+  }).join('');
+  $('#nb-entretiens').hidden = !editing.entretiens.length;
+  $('#nb-entretiens').textContent = editing.entretiens.length;
+}
+
+$('#btn-ent-save').addEventListener('click', () => {
+  const e = Object.fromEntries(Object.entries(ENT_CHAMPS).map(([k, id]) => [k, $(`#${id}`).value.trim()]));
+  if (!e.date) { toast('Indiquez la date de l\'entretien.', true); return; }
+  const id = $('#ent-id').value;
+  if (id) {
+    Object.assign(editing.entretiens.find((x) => x.id === id), e);
+  } else {
+    editing.entretiens.push({ id: uid(), ...e });
+    editing.historique.push({ id: uid(), date: today(), texte: `${e.etape} prévu le ${fmtDate(e.date)}${e.heure ? ` à ${fmtHeure(e.heure)}` : ''}` });
+    const form = $('#form-offre');
+    if (['a_postuler', 'postule', 'relance'].includes(form.statut.value)) form.statut.value = 'entretien';
+    renderHistorique();
+  }
+  resetEntretienForm();
+  renderEntretiens();
+  toast('Entretien enregistré dans la fiche : pensez à enregistrer la candidature.');
+});
+
+$('#btn-ent-cancel').addEventListener('click', resetEntretienForm);
+
+function editEntretien(id) {
+  const e = editing.entretiens.find((x) => x.id === id);
+  Object.entries(ENT_CHAMPS).forEach(([k, fid]) => { $(`#${fid}`).value = e[k] ?? ''; });
+  $('#ent-id').value = id;
+  $('#entretien-titre').textContent = 'Modifier l\'entretien';
+  $('#btn-ent-save').textContent = 'Mettre à jour l\'entretien';
+  $('#btn-ent-cancel').hidden = false;
+  $('#form-entretien').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Fichier agenda (.ics) : heure locale, durée d'une heure.
+function icsEntretien(e, o) {
+  const echap = (t) => String(t || '').replace(/\\/g, '\\\\').replace(/[,;]/g, (c) => `\\${c}`).replace(/\r?\n/g, '\\n');
+  const debut = `${e.date.replaceAll('-', '')}T${(e.heure || '09:00').replace(':', '')}00`;
+  const d = new Date(`${e.date}T${e.heure || '09:00'}:00`);
+  d.setHours(d.getHours() + 1);
+  const p2 = (n) => String(n).padStart(2, '0');
+  const fin = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}T${p2(d.getHours())}${p2(d.getMinutes())}00`;
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//MyJob//FR', 'BEGIN:VEVENT',
+    `UID:${e.id}@myjob`, `DTSTAMP:${stamp}`, `DTSTART:${debut}`, `DTEND:${fin}`,
+    `SUMMARY:${echap(`${e.etape} - ${o.entreprise}${o.poste ? ` (${o.poste})` : ''}`)}`,
+    `LOCATION:${echap(e.lieu)}`,
+    `DESCRIPTION:${echap([`Format : ${e.format}`, e.interlocuteurs && `Interlocuteurs : ${e.interlocuteurs}`, e.preparation && `\n${e.preparation}`].filter(Boolean).join('\n'))}`,
+    'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:Entretien dans 2 heures', 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+}
+
+function promptEntretien(form) {
+  const etape = $('#ent-etape').value;
+  return [
+    `Je prépare un ${etape.toLowerCase()} (${$('#ent-format').value}) pour le poste de « ${form.poste.value || 'non précisé'} » chez ${form.entreprise.value}.`,
+    $('#ent-interlocuteurs').value ? `Interlocuteurs : ${$('#ent-interlocuteurs').value}.` : '',
+    '',
+    'Mon profil : technicien de maintenance informatique, compétences polyvalentes.',
+    state.reglages.profil ? `Mes compétences : ${state.reglages.profil.replace(/\s*\n\s*/g, ', ')}` : '',
+    '',
+    'Peux-tu :',
+    '1. lister les 10 questions les plus probables (techniques et comportementales) avec, pour chacune, une piste de réponse adaptée à mon profil ;',
+    '2. me donner 3 exemples concrets à préparer selon la méthode STAR ;',
+    '3. proposer 5 questions pertinentes à poser au recruteur ;',
+    '4. signaler les points de l\'annonce où mon profil est moins fort et comment en parler.',
+    '',
+    'Voici l\'annonce :',
+    '"""',
+    form.texteOffre.value.trim() || '(candidature spontanée, pas d\'annonce)',
+    '"""',
+  ].filter((l, i, arr) => l !== '' || arr[i - 1] !== '').join('\n');
+}
+
+$('#btn-ent-claude').addEventListener('click', async () => {
+  await copier(promptEntretien($('#form-offre')));
+  toast('Demande copiée : collez-la dans Claude (claude.ai).');
+});
 
 function renderReponses() {
   const items = [...editing.reponses].reverse().sort((a, b) => b.date.localeCompare(a.date));
@@ -718,6 +853,18 @@ document.addEventListener('click', (e) => {
   if (ds.editDoc) openDoc(ds.editDoc);
   if (ds.lettre) openLettre(ds.lettre);
 
+  if (ds.editEnt) editEntretien(ds.editEnt);
+  if (ds.delEnt && confirm('Supprimer cet entretien ?')) {
+    editing.entretiens = editing.entretiens.filter((x) => x.id !== ds.delEnt);
+    resetEntretienForm();
+    renderEntretiens();
+  }
+  if (ds.icsEnt) {
+    const ent = editing.entretiens.find((x) => x.id === ds.icsEnt);
+    const form = $('#form-offre');
+    const ics = icsEntretien(ent, { entreprise: form.entreprise.value, poste: form.poste.value });
+    download(new Blob([ics], { type: 'text/calendar' }), `entretien-${form.entreprise.value.replace(/[^\w-]+/g, '_')}-${ent.date}.ics`);
+  }
   if (ds.delRep) {
     editing.reponses = editing.reponses.filter((r) => r.id !== ds.delRep);
     renderReponses();

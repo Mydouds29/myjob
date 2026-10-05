@@ -38,6 +38,7 @@
         </select>
         <button id="btn-add-offre" class="btn primary">+ Nouvelle candidature</button>
       </div>
+      <p id="entretiens-a-venir" class="alert" hidden></p>
       <p id="relances" class="alert" hidden></p>
 
       <div class="table-wrap">
@@ -121,7 +122,7 @@
 
         <div class="card">
           <h2>Rappels par e-mail</h2>
-          <label class="check"><input name="emailRelances" type="checkbox"> Recevoir chaque matin la liste des relances à faire</label>
+          <label class="check"><input name="emailRelances" type="checkbox"> Recevoir chaque matin la liste des relances et des entretiens à venir</label>
           <label>Adresse qui reçoit les rappels<input name="emailDestinataire" type="email" placeholder="vous@exemple.fr"></label>
           <label>Adresse Gmail d'envoi<input name="smtpUser" type="email" placeholder="votre.compte@gmail.com"></label>
           <label>Mot de passe d'application Gmail
@@ -217,6 +218,51 @@
           <button type="button" id="btn-prompt" class="btn" title="Copie une demande prête à coller dans Claude">Préparer pour Claude</button>
         </div>
         <div id="analyse"></div>
+      </details>
+
+      <details id="section-entretiens">
+        <summary>Entretiens <span id="nb-entretiens" class="tag" hidden></span></summary>
+        <ul id="entretiens" class="reponses entretiens"></ul>
+        <fieldset id="form-entretien" class="sous-form">
+          <legend id="entretien-titre">Nouvel entretien</legend>
+          <input type="hidden" id="ent-id">
+          <div class="grid">
+            <label>Date<input id="ent-date" type="date"></label>
+            <label>Heure<input id="ent-heure" type="time"></label>
+            <label>Format
+              <select id="ent-format">
+                <option value="sur place">Sur place</option>
+                <option value="visio">Visio</option>
+                <option value="téléphone">Téléphone</option>
+              </select>
+            </label>
+            <label>Étape
+              <select id="ent-etape">
+                <option>Entretien RH</option><option>Entretien technique</option><option>Entretien manager</option>
+                <option>Test / mise en situation</option><option>Entretien final</option><option>Autre</option>
+              </select>
+            </label>
+          </div>
+          <label>Adresse ou lien de la visio<input id="ent-lieu" placeholder="12 rue…, ou https://teams…"></label>
+          <label>Interlocuteurs<input id="ent-interlocuteurs" placeholder="Nom, fonction"></label>
+          <label>Préparation : points à mettre en avant, questions à poser
+            <textarea id="ent-preparation" rows="5" placeholder="- Mon expérience sur le parc de 300 postes&#10;- Question : taille de l'équipe ? astreintes ?"></textarea>
+          </label>
+          <label>Compte rendu après l'entretien
+            <textarea id="ent-compte-rendu" rows="4" placeholder="Questions posées, impressions, prochaines étapes…"></textarea>
+          </label>
+          <label>Ressenti
+            <select id="ent-ressenti">
+              <option value="">—</option><option value="1">😟 Mauvais</option><option value="2">😐 Moyen</option>
+              <option value="3">🙂 Bon</option><option value="4">😀 Très bon</option>
+            </select>
+          </label>
+          <div class="row">
+            <button type="button" id="btn-ent-save" class="btn">Ajouter l'entretien</button>
+            <button type="button" id="btn-ent-cancel" class="btn ghost" hidden>Annuler la modification</button>
+            <button type="button" id="btn-ent-claude" class="btn" title="Copie une demande prête à coller dans Claude">Préparer avec Claude</button>
+          </div>
+        </fieldset>
       </details>
 
       <details id="section-reponses">

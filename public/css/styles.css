@@ -304,3 +304,11 @@ a.btn { text-decoration: none; display: inline-block; }
 .r-refus { background: #f2d6d2; color: #85281d; }
 .r-offre { background: #d3ead9; color: #1f5a31; }
 .r-autre { background: #e4e3df; color: #3d4144; }
+
+/* Entretiens */
+.sous-form { border: 1px dashed var(--border); border-radius: var(--radius); padding: 10px 12px; margin: 0 0 8px; }
+.sous-form legend { font-weight: 600; font-size: 14px; padding: 0 4px; }
+.entretiens .details { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.entretiens .actions-ent { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.r-avenir { background: #f6e3a6; color: #6b4e00; }
+.r-passe { background: #e4e3df; color: #3d4144; }
