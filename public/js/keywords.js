@@ -21,7 +21,7 @@ const KW_TECH = {
   'Hyper-V': ['hyper-v', 'hyperv'],
   'Proxmox': ['proxmox'],
   'Virtualisation': ['virtualisation', 'virtualization'],
-  'Docker': ['docker', 'conteneur', 'conteneurs'],
+  'Docker': ['docker', 'conteneurisation'],
   'Kubernetes': ['kubernetes', 'k8s'],
   'PowerShell': ['powershell'],
   'Bash / Shell': ['bash', 'shell'],
