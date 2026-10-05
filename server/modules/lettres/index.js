@@ -52,5 +52,32 @@ export default {
       res.setHeader('Content-Disposition', `attachment; filename="${nomFichier(offre)}"`);
       res.send(buffer);
     });
+
+    // Lettre rédigée (par Claude, puis relue) : mise en page simple, ou modèle
+    // Word dont le champ {corps} reçoit le texte.
+    router.post('/lettre-texte.docx', async (req, res) => {
+      const uid = req.user.id;
+      const b = req.body || {};
+      const texte = String(b.texte || '').trim();
+      if (!texte) throw httpError(400, 'La lettre est vide.');
+      const offre = {};
+      for (const k of ['entreprise', 'poste', 'lieu', 'contact', 'reference']) offre[k] = String(b[k] || '').slice(0, 300);
+      let buffer;
+      if (b.modeleId) {
+        const modele = documents.get(uid, checkId(b.modeleId));
+        const fichier = modele && cheminFichier(uid, modele);
+        if (!fichier || !fichier.endsWith('.docx')) throw httpError(400, 'Ce modèle n\'est pas un fichier Word.');
+        try {
+          buffer = docxDepuisModeleWord(fichier, { ...champsLettre(offre, getSettings(uid)), corps: texte });
+        } catch (err) {
+          throw httpError(400, `Le modèle Word n'a pas pu être rempli (${err.message}).`);
+        }
+      } else {
+        buffer = await docxDepuisTexte(texte);
+      }
+      res.setHeader('Content-Type', DOCX);
+      res.setHeader('Content-Disposition', `attachment; filename="${nomFichier(offre)}"`);
+      res.send(buffer);
+    });
   },
 };

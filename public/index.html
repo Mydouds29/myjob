@@ -79,7 +79,7 @@
     <!-- Vue documents -->
     <section id="view-documents" class="view" hidden>
       <div class="toolbar">
-        <p class="hint">Importez vos versions de CV et de lettres, et vos modèles de lettre. Dans un modèle, {entreprise}, {poste}, {competences}, {date}, {nom} et {ville} sont remplacés automatiquement.</p>
+        <p class="hint">Importez vos versions de CV et de lettres, et vos modèles de lettre. Dans un modèle, {entreprise}, {poste}, {competences}, {date}, {nom} et {ville} sont remplacés automatiquement, et {corps} reçoit le texte d'une lettre rédigée par Claude.</p>
         <button id="btn-add-doc" class="btn primary">+ Nouveau document</button>
       </div>
       <div class="table-wrap">
@@ -103,12 +103,31 @@
           <label>Mes compétences, une par ligne ou séparées par des virgules
             <textarea name="profil" rows="16" placeholder="Windows, Active Directory, GLPI, maintenance matériel, réseau…"></textarea>
           </label>
+          <label>Ce que je recherche et pourquoi je veux changer de poste
+            <textarea name="projetPro" rows="4" placeholder="ex. évoluer vers l'administration systèmes, un poste plus stable géographiquement, travailler en équipe…"></textarea>
+          </label>
+          <p class="hint">Utilisé par Claude pour l'analyse des annonces et les lettres, toujours de façon positive.</p>
           <p class="hint">L'analyse des offres indique les compétences demandées que vous avez déjà (✓).</p>
           <details id="choix-profil">
             <summary>Choisir dans une liste</summary>
             <p class="hint">Cliquez pour ajouter ou retirer une compétence. Le nombre indique dans combien de vos annonces elle est demandée.</p>
             <div id="profil-choix"></div>
           </details>
+        </div>
+
+        <div class="card">
+          <h2>Ma façon d'écrire</h2>
+          <p class="hint">Pour les lettres rédigées par Claude : qu'elles vous ressemblent et ne se ressemblent pas entre elles.</p>
+          <label>Le ton que je veux, en quelques mots
+            <textarea name="styleEcriture" rows="3" placeholder="ex. sobre, direct, concret, phrases courtes, pas de superlatifs"></textarea>
+          </label>
+          <label>Exemples de textes que j'ai écrits (facultatif : un mail, une ancienne lettre…)
+            <textarea name="exemplesTextes" rows="6"></textarea>
+          </label>
+          <label>Formules à ne jamais utiliser, une par ligne (en plus de la liste habituelle des formules toutes faites)
+            <textarea name="formulesInterdites" rows="4"></textarea>
+          </label>
+          <p class="hint">Les lettres que vous téléchargez sont gardées : Claude évite ensuite d'en reprendre les tournures.</p>
         </div>
       </form>
     </section>
@@ -252,6 +271,7 @@
         <div class="row">
           <button type="button" id="btn-analyse" class="btn">Analyser les mots-clés</button>
           <button type="button" id="btn-prompt" class="btn" title="Copie une demande prête à coller dans Claude">Préparer pour Claude</button>
+          <button type="button" id="btn-lettre-ia" class="btn" hidden title="Claude rédige 3 versions de lettre à partir de l'annonce et de votre profil">Rédiger la lettre avec Claude</button>
           <button type="button" id="btn-analyse-ia" class="btn primary" hidden title="Claude lit l'annonce et la compare à votre profil (1 à 2 minutes)">Analyser avec Claude</button>
         </div>
         <div id="analyse"></div>
@@ -365,6 +385,24 @@
       <div class="dlg-actions">
         <button type="button" class="btn ghost" data-close>Annuler</button>
         <button type="submit" class="btn primary">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Lettre rédigée par Claude -->
+  <dialog id="dlg-lettre-ia">
+    <form method="dialog">
+      <h2>Lettre rédigée par Claude</h2>
+      <p id="lettre-ia-etat" class="hint"></p>
+      <div id="lettre-ia-versions" class="row"></div>
+      <textarea id="lettre-ia-texte" rows="18"></textarea>
+      <label>Mise en page<select id="lettre-ia-modele"></select></label>
+      <p class="hint">Dans un modèle Word, écrivez {corps} à l'endroit où doit aller le texte de la lettre.</p>
+      <div class="dlg-actions">
+        <button type="button" class="btn ghost" data-close>Fermer</button>
+        <button type="button" id="btn-lettre-ia-refaire" class="btn">Autres versions</button>
+        <button type="button" id="btn-lettre-ia-copier" class="btn">Copier le texte</button>
+        <button type="button" id="btn-lettre-ia-docx" class="btn primary">Télécharger en Word</button>
       </div>
     </form>
   </dialog>

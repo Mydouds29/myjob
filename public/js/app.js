@@ -567,6 +567,7 @@ $('#btn-lire-annonce').addEventListener('click', (e) => run(async () => {
 function renderAnalyseIA(a) {
   const el = $('#analyse-ia');
   $('#btn-analyse-ia').hidden = !state.analyseDisponible;
+  $('#btn-lettre-ia').hidden = !state.analyseDisponible;
   if (!a) { el.innerHTML = ''; return; }
   const puces = (titre, items) => (items?.length
     ? `<h4>${titre}</h4><ul>${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '');
@@ -601,6 +602,93 @@ $('#btn-analyse-ia').addEventListener('click', (e) => run(async () => {
     btn.disabled = false;
     btn.textContent = 'Analyser avec Claude';
   }
+}));
+
+// ---------- Lettre rédigée par Claude ----------
+
+// Versions proposées pour la candidature ouverte (les retouches sont gardées en changeant de version).
+let lettreIA = { versions: [], choix: 0 };
+
+function renderLettreIA() {
+  const { versions, choix } = lettreIA;
+  $('#lettre-ia-versions').innerHTML = versions.map((v, i) => `<button type="button" data-version-ia="${i}"
+    class="btn small${i === choix ? ' primary' : ''}">${esc(v.angle)}</button>`).join('');
+  $('#lettre-ia-texte').value = versions[choix]?.texte || '';
+}
+
+function champsLettreIA() {
+  const form = $('#form-offre');
+  return Object.fromEntries(['poste', 'entreprise', 'lieu', 'contrat', 'contact', 'reference', 'texteOffre']
+    .map((k) => [k, form[k].value]));
+}
+
+async function rediger() {
+  const btn = $('#btn-lettre-ia-refaire');
+  btn.disabled = true;
+  $('#lettre-ia-etat').textContent = 'Claude rédige 3 versions… (1 à 3 minutes)';
+  try {
+    const r = await api('POST', 'lettre-claude', { ...champsLettreIA(), id: editing.id, analyseIA: editing.analyseIA, nombre: 3 });
+    const gardee = editing.lettreFinale ? [{ angle: 'Ma version gardée', texte: editing.lettreFinale.texte }] : [];
+    lettreIA = { versions: [...gardee, ...r.versions], choix: gardee.length };
+    $('#lettre-ia-etat').textContent = `Choisissez une version, retouchez-la, puis téléchargez-la.${r.precedentes
+      ? ` Claude a évité les tournures de vos ${r.precedentes} lettre${r.precedentes > 1 ? 's' : ''} précédente${r.precedentes > 1 ? 's' : ''}.` : ''}`;
+    renderLettreIA();
+  } catch (err) {
+    $('#lettre-ia-etat').textContent = err.message;
+    throw err;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// La version téléchargée ou copiée est gardée avec la candidature : elle sert
+// d'exemple à ne pas répéter pour les lettres suivantes.
+async function garderLettre() {
+  const texte = $('#lettre-ia-texte').value.trim();
+  if (!texte) return;
+  editing.lettreFinale = { date: today(), texte, angle: lettreIA.versions[lettreIA.choix]?.angle || '' };
+  const prev = state.offres.find((o) => o.id === editing.id);
+  if (prev) {
+    Object.assign(prev, normaliser(await api('PUT', `offres/${prev.id}`, { ...prev, lettreFinale: editing.lettreFinale })));
+  }
+}
+
+$('#btn-lettre-ia').addEventListener('click', () => {
+  const modeles = state.documents.filter((d) => d.type === 'modele' && /\.docx$/i.test(d.fichier?.nom || ''));
+  $('#lettre-ia-modele').innerHTML = '<option value="">Mise en page simple</option>'
+    + modeles.map((m) => `<option value="${m.id}">Modèle Word : ${esc(m.nom)}</option>`).join('');
+  lettreIA = { versions: [], choix: 0 };
+  renderLettreIA();
+  $('#dlg-lettre-ia').showModal();
+  run(rediger);
+});
+
+$('#lettre-ia-versions').addEventListener('click', (e) => {
+  const i = e.target.closest('[data-version-ia]')?.dataset.versionIa;
+  if (i === undefined) return;
+  lettreIA.versions[lettreIA.choix].texte = $('#lettre-ia-texte').value; // garde les retouches
+  lettreIA.choix = Number(i);
+  renderLettreIA();
+});
+
+$('#btn-lettre-ia-refaire').addEventListener('click', () => run(rediger));
+
+$('#btn-lettre-ia-copier').addEventListener('click', () => run(async () => {
+  await copier($('#lettre-ia-texte').value);
+  await garderLettre();
+  toast('Lettre copiée et gardée avec la candidature.');
+}));
+
+$('#btn-lettre-ia-docx').addEventListener('click', () => run(async () => {
+  const texte = $('#lettre-ia-texte').value.trim();
+  if (!texte) throw new Error('La lettre est vide.');
+  const blob = await api('POST', 'lettre-texte.docx', { ...champsLettreIA(), texte, modeleId: $('#lettre-ia-modele').value || undefined });
+  const nom = `Lettre_${$('#form-offre').entreprise.value || 'motivation'}`.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '_');
+  download(blob, `${nom}.docx`);
+  await garderLettre();
+  toast(state.offres.some((o) => o.id === editing.id)
+    ? 'Lettre téléchargée et gardée avec la candidature.'
+    : 'Lettre téléchargée : enregistrez la candidature pour la garder.');
 }));
 
 $('#btn-analyse').addEventListener('click', () => {
@@ -812,7 +900,7 @@ function renderSettings() {
 
 function renderProfil() {
   const form = $('#form-profil');
-  ['nomComplet', 'ville', 'profil']
+  ['nomComplet', 'ville', 'profil', 'projetPro', 'styleEcriture', 'exemplesTextes', 'formulesInterdites']
     .forEach((k) => { if (document.activeElement !== form[k]) form[k].value = state.reglages[k] ?? ''; });
   renderChoixProfil();
 }
@@ -917,7 +1005,8 @@ $('#form-settings').addEventListener('change', (e) => {
 $('#form-profil').addEventListener('change', (e) => {
   if (!e.target.name) return;
   const form = e.currentTarget;
-  const values = { nomComplet: form.nomComplet.value, ville: form.ville.value, profil: form.profil.value };
+  const values = Object.fromEntries(['nomComplet', 'ville', 'profil', 'projetPro', 'styleEcriture', 'exemplesTextes', 'formulesInterdites']
+    .map((k) => [k, form[k].value]));
   saveQueue = saveQueue.then(() => run(async () => {
     state.reglages = await api('PUT', 'reglages', values);
     renderProfil();

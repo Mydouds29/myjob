@@ -10,6 +10,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { getSettings } from '../../core/db.js';
+import { offres } from '../candidatures/index.js';
+import { SCHEMA_LETTRE, CONSIGNES_LETTRE, demandeLettre } from './lettre.js';
 
 const CLAUDE = process.env.MYJOB_CLAUDE_BIN || '/usr/bin/claude';
 const DELAI_MS = 5 * 60 * 1000;
@@ -84,6 +86,7 @@ function demande(annonce, reglages) {
     '# Profil du candidat',
     champ('Ville', reglages.ville),
     champ('Compétences', String(reglages.profil || '').replace(/\s*\n\s*/g, ', ')) || 'Compétences : (non renseignées)',
+    champ('Ce qu\'il recherche et pourquoi il veut changer', reglages.projetPro),
     '',
     '# Annonce',
     champ('Poste', annonce.poste),
@@ -144,7 +147,8 @@ export default {
   description: 'Analyse d\'une annonce par Claude (abonnement Claude de l\'utilisateur)',
   ordre: 20,
 
-  reglages: { claudeToken: '' },
+  // Le style d'écriture sert aux lettres rédigées par Claude.
+  reglages: { claudeToken: '', projetPro: '', styleEcriture: '', exemplesTextes: '', formulesInterdites: '' },
   secrets: ['claudeToken'],
 
   etat: (uid) => ({ analyseDisponible: analyseDisponible(uid) }),
@@ -179,6 +183,37 @@ export default {
       try {
         const analyse = await interrogerClaude(demande(annonce, getSettings(req.user.id)), jetonClaude(req.user.id), dossierClaude());
         res.json({ ...analyse, date: new Date().toISOString().slice(0, 10) });
+      } finally {
+        enCours = false;
+      }
+    });
+
+    // Lettre de motivation : plusieurs versions, à partir de la candidature
+    // telle qu'elle est dans le formulaire (même non enregistrée).
+    router.post('/lettre-claude', async (req, res) => {
+      const uid = req.user.id;
+      if (!analyseDisponible(uid)) throw httpError(503, 'Claude n\'est pas configuré (Paramètres → Services connectés).');
+      const b = req.body || {};
+      const annonce = {};
+      for (const k of ['poste', 'entreprise', 'lieu', 'contrat', 'contact']) annonce[k] = String(b[k] || '').slice(0, 300);
+      annonce.texteOffre = String(b.texteOffre || '').slice(0, 40000);
+      annonce.analyseIA = b.analyseIA && typeof b.analyseIA === 'object' ? b.analyseIA : null;
+      if (!annonce.poste.trim() && annonce.texteOffre.trim().length < 100) {
+        throw httpError(400, 'Indiquez au moins le poste ou le texte de l\'annonce.');
+      }
+      // Les 5 dernières lettres gardées, hors celle de cette candidature.
+      const precedentes = offres.all(uid)
+        .filter((o) => o.id !== b.id && o.lettreFinale?.texte)
+        .sort((x, y) => String(y.lettreFinale.date).localeCompare(String(x.lettreFinale.date)))
+        .slice(0, 5)
+        .map((o) => String(o.lettreFinale.texte).slice(0, 3000));
+      const nombre = Math.min(3, Math.max(2, Number(b.nombre) || 3));
+      if (enCours) throw httpError(429, 'Claude est déjà occupé, réessayez dans une minute.');
+      enCours = true;
+      try {
+        const r = await interrogerClaude(demandeLettre({ annonce, reglages: getSettings(uid), precedentes, nombre }),
+          jetonClaude(uid), dossierClaude(), { consignes: CONSIGNES_LETTRE, schema: SCHEMA_LETTRE });
+        res.json({ versions: r.versions, precedentes: precedentes.length });
       } finally {
         enCours = false;
       }
