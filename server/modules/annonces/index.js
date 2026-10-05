@@ -41,10 +41,16 @@ export default {
       // Champs lus directement sur la page : ils complètent ou remplacent le
       // repli « titre de la page », mais pas les données JobPosting.
       const champs = b.champs && typeof b.champs === 'object' ? b.champs : {};
-      for (const k of ['poste', 'entreprise', 'lieu']) {
+      for (const k of ['poste', 'entreprise', 'lieu', 'salaire']) {
         const v = chaine(champs[k], 300).split('\n')[0].trim();
         if (v && (!a[k] || a.methode !== 'jsonld')) a[k] = v;
       }
+      // Contrat et télétravail donnés en clair par le site (Indeed : « Temps plein CDI »,
+      // « Télétravail partiel ») : ramenés aux choix du formulaire.
+      const contrat = contratDepuisTexte(chaine(champs.contrat, 300));
+      if (contrat && (!a.contrat || a.methode !== 'jsonld')) a.contrat = contrat;
+      const teletravail = teletravailDepuisTexte(chaine(champs.teletravail, 300));
+      if (teletravail && (!a.teletravail || a.methode !== 'jsonld')) a.teletravail = teletravail;
       // Texte sélectionné par l'utilisateur : c'est lui qui fait foi.
       const selection = chaine(b.selection, 30000);
       if (selection.length > 40) {

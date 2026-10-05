@@ -963,6 +963,10 @@ $('#filter-statut').innerHTML += STATUTS
 
 // ---------- Favori « Envoyer à MyJob » ----------
 
+// À augmenter à chaque modification de envoyerAMyJob() : MyJob signale alors
+// qu'un favori plus ancien doit être refait.
+const FAVORI_VERSION = 2;
+
 // Ce code s'exécute sur la page de l'annonce (Indeed, LinkedIn…) quand on
 // clique sur le favori : il lit ce que le navigateur affiche et l'ouvre dans
 // MyJob. Il doit rester autonome (aucune fonction de ce fichier n'y est connue).
@@ -979,25 +983,44 @@ function envoyerAMyJob() {
   const meta = (n) => document.querySelector(`meta[property="${n}"],meta[name="${n}"]`)?.content || '';
   const jsonld = [...document.querySelectorAll('script[type="application/ld+json"]')]
     .map((s) => s.textContent).filter((t) => t.includes('JobPosting'));
+
+  // Indeed : l'annonce ouverte est repérée par sa clé (?vjk= ou ?jk=) dans
+  // les données de la liste de résultats que la page garde en mémoire.
+  const indeed = /(^|\.)indeed\./.test(location.hostname);
+  let carte = null;
+  if (indeed) {
+    const p = new URLSearchParams(location.search);
+    const cle = p.get('vjk') || p.get('jk');
+    try {
+      carte = window.mosaic.providerData['mosaic-provider-jobcards'].metaData
+        .mosaicProviderJobCardsModel.results.find((r) => r.jobkey === cle) || null;
+    } catch { /* autre page Indeed */ }
+  }
+
   // Repères relevés sur la vraie page de résultats Indeed (octobre 2026) ;
-  // #jobDescriptionText est celui de l'ancienne mise en page.
-  const texte = lire(['.react-native-html-content', '#jobDescriptionText',
-    '.jobs-description__content', '#job-details', 'main', 'article', 'body']);
+  // #jobDescriptionText est celui de l'ancienne mise en page. Sur Indeed, on
+  // ne prend jamais toute la page (elle contient la liste des autres offres).
+  const texte = lire(['.react-native-html-content', '#jobDescriptionText', '.jobs-description__content', '#job-details',
+    ...(indeed ? [] : ['main', 'article', 'body'])]);
   const html = `<title>${echapper(document.title)}</title>`
     + ['og:title', 'og:description', 'og:site_name', 'description']
       .map((n) => `<meta property="${n}" content="${echapper(meta(n))}">`).join('')
     + jsonld.map((j) => `<script type="application/ld+json">${j.replace(/<\//g, '<\\/')}</script>`).join('')
     + `<main>${echapper(texte.slice(0, 30000)).replace(/\n/g, '<br>')}</main>`;
   const donnees = {
+    version: '__VERSION__',
     url: location.href,
     html: html.slice(0, 300000),
     selection: String(getSelection() || '').trim().slice(0, 30000),
     champs: {
-      poste: lire(['[data-testid="vj-job-title"]',
+      poste: carte?.displayTitle || carte?.title || lire(['[data-testid="vj-job-title"]',
         '.job-details-jobs-unified-top-card__job-title', '.top-card-layout__title']),
-      entreprise: lire(['[data-testid="company-info-metadata"] > div > :first-child',
+      entreprise: carte?.company || lire(['[data-testid="company-info-metadata"] > div > :first-child',
         '.job-details-jobs-unified-top-card__company-name', '.topcard__org-name-link']),
-      lieu: lire(['[data-testid="company-info-metadata"] > div > :nth-child(2)']),
+      lieu: carte?.formattedLocation || lire(['[data-testid="company-info-metadata"] > div > :nth-child(2)']),
+      contrat: (carte?.jobTypes || []).join(' '),
+      salaire: carte?.salarySnippet?.text || '',
+      teletravail: carte?.remoteWorkModel?.text || '',
     },
   };
   const adresse = `${ORIGINE}/#annonce=${encodeURIComponent(JSON.stringify(donnees))}`;
@@ -1005,7 +1028,7 @@ function envoyerAMyJob() {
 }
 
 function renderFavori() {
-  const code = `(${envoyerAMyJob.toString().replace('__ORIGINE__', location.origin)})()`;
+  const code = `(${envoyerAMyJob.toString().replace('__ORIGINE__', location.origin).replace('__VERSION__', FAVORI_VERSION)})()`;
   $('#favori-myjob').href = `javascript:${encodeURIComponent(code)}`;
 }
 
@@ -1026,6 +1049,9 @@ async function recevoirAnnonce() {
   try { donnees = JSON.parse(decodeURIComponent(brut)); } catch { throw new Error('Annonce reçue illisible.'); }
   const a = await api('POST', 'annonces/page', donnees);
   openOffre();
+  if (Number(donnees.version || 1) < FAVORI_VERSION) {
+    setTimeout(() => toast('Votre favori « Envoyer à MyJob » n\'est plus à jour : supprimez-le et refaites-le glisser depuis Paramètres.', true), 2600);
+  }
   const form = $('#form-offre');
   // On garde l'annonce de côté : la candidature n'est pas encore envoyée.
   form.statut.value = 'a_postuler';
