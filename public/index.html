@@ -219,6 +219,26 @@
         <div id="analyse"></div>
       </details>
 
+      <details id="section-reponses">
+        <summary>Réponses reçues <span id="nb-reponses" class="tag" hidden></span></summary>
+        <ul id="reponses" class="reponses"></ul>
+        <div class="grid">
+          <label>Date de la réponse<input id="rep-date" type="date"></label>
+          <label>Type de réponse
+            <select id="rep-type">
+              <option value="entretien">Proposition d'entretien</option>
+              <option value="refus">Refus</option>
+              <option value="offre">Offre d'embauche</option>
+              <option value="autre">Autre (demande d'informations…)</option>
+            </select>
+          </label>
+        </div>
+        <label>Copie du message (e-mail, SMS, notes d'appel)
+          <textarea id="rep-message" rows="5" placeholder="Collez ici le message reçu"></textarea>
+        </label>
+        <button type="button" id="btn-rep-add" class="btn">Ajouter la réponse</button>
+      </details>
+
       <details id="section-historique">
         <summary>Historique des échanges</summary>
         <ul id="historique" class="historique"></ul>

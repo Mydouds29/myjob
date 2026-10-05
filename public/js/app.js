@@ -14,6 +14,7 @@ const STATUTS = [
 const statutLabel = (id) => STATUTS.find((s) => s.id === id)?.label ?? id;
 const EN_ATTENTE = ['postule', 'relance'];
 const AVEC_REPONSE = ['entretien', 'offre', 'refus'];
+const TYPES_REPONSE = { entretien: 'Proposition d\'entretien', refus: 'Refus', offre: 'Offre d\'embauche', autre: 'Autre' };
 
 let state = { offres: [], documents: [], reglages: {}, utilisateur: {} };
 
@@ -65,6 +66,7 @@ function normaliser(o) {
   o.type ??= 'offre';
   o.historique ??= [];
   o.motsCles ??= [];
+  o.reponses ??= [];
   return o;
 }
 
@@ -136,6 +138,12 @@ function renderStats() {
   const reponses = state.offres.filter((o) => AVEC_REPONSE.includes(o.statut)).length;
   const taux = envoyees ? Math.round((reponses / envoyees) * 100) : 0;
   const semaine = state.offres.filter((o) => o.dateCandidature && o.dateCandidature > addDays(today(), -7)).length;
+  // Délai moyen entre la candidature et la première réponse.
+  const delais = state.offres
+    .filter((o) => o.dateCandidature && o.reponses.length)
+    .map((o) => (new Date(o.reponses.map((r) => r.date).sort()[0]) - new Date(o.dateCandidature)) / 86400000)
+    .filter((d) => d >= 0);
+  const delaiMoyen = delais.length ? Math.round(delais.reduce((a, b) => a + b, 0) / delais.length) : null;
 
   $('#stats').innerHTML = items.map((s) => `
     <div class="stat ${activeStatut === s.id ? 'selected' : ''}" data-statut="${s.id}">
@@ -144,7 +152,9 @@ function renderStats() {
     <div class="stat info" title="Entretiens, offres et refus, rapportés aux candidatures envoyées">
       <div class="n">${taux} %</div><div class="l">Taux de réponse</div>
     </div>
-    <div class="stat info"><div class="n">${semaine}</div><div class="l">Ces 7 derniers jours</div></div>`;
+    <div class="stat info"><div class="n">${semaine}</div><div class="l">Ces 7 derniers jours</div></div>
+    ${delaiMoyen === null ? '' : `<div class="stat info" title="Entre la candidature et la première réponse">
+      <div class="n">${delaiMoyen} j</div><div class="l">Délai de réponse</div></div>`}`;
 }
 
 function renderRelances() {
@@ -158,7 +168,7 @@ function renderRelances() {
 }
 
 function searchText(o) {
-  const histo = o.historique.map((h) => h.texte).join(' ');
+  const histo = o.historique.map((h) => h.texte).concat(o.reponses.map((r) => r.message)).join(' ');
   return [o.entreprise, o.poste, o.lieu, o.source, o.contact, o.reference, o.contrat,
     o.notes, o.texteOffre, histo, o.motsCles.join(' ')].join(' ').toLowerCase();
 }
@@ -189,7 +199,8 @@ function renderOffres() {
     const titre = url
       ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(posteTxt)}</a>`
       : esc(posteTxt);
-    const tag = o.type === 'spontanee' ? '<span class="tag">spontanée</span>' : '';
+    const tag = (o.type === 'spontanee' ? '<span class="tag">spontanée</span>' : '')
+      + (o.reponses.length ? `<span class="tag" title="Réponse reçue">✉ ${o.reponses.length}</span>` : '');
     const details = [o.lieu, o.contrat].filter(Boolean).map(esc).join(' · ');
     const docs = [docLink(o.cvId), docLink(o.lettreId)].filter(Boolean).join('<br>');
     const overdue = relanceDue(o);
@@ -242,7 +253,7 @@ function openOffre(id) {
   editing = existing
     ? structuredClone(existing)
     : {
-      type: 'offre', statut: 'postule', dateCandidature: d, historique: [], motsCles: [],
+      type: 'offre', statut: 'postule', dateCandidature: d, historique: [], motsCles: [], reponses: [],
       dateRelance: delai > 0 ? addDays(d, delai) : '',
     };
   form.reset();
@@ -254,6 +265,10 @@ function openOffre(id) {
   setOffreType(editing.type);
   $('#section-texte').open = !existing || Boolean(editing.texteOffre);
   $('#section-historique').open = editing.historique.length > 0;
+  $('#section-reponses').open = editing.reponses.length > 0;
+  $('#rep-date').value = d;
+  $('#rep-message').value = '';
+  renderReponses();
   $('#histo-date').value = d;
   $('#histo-texte').value = '';
   renderAnalyse(editing.texteOffre ? analyseOffre(editing.texteOffre) : null);
@@ -268,6 +283,36 @@ function renderHistorique() {
     <li><time>${fmtDate(h.date)}</time><span>${esc(h.texte)}</span>
       <button type="button" data-del-histo="${h.id}" title="Supprimer">✕</button></li>`).join('');
 }
+
+function renderReponses() {
+  const items = [...editing.reponses].reverse().sort((a, b) => b.date.localeCompare(a.date));
+  $('#reponses').innerHTML = items.map((r) => `
+    <li><div class="entete"><span class="badge r-${esc(r.type)}">${esc(TYPES_REPONSE[r.type] || r.type)}</span>
+      <time>${fmtDate(r.date)}</time>
+      <button type="button" data-del-rep="${r.id}" title="Supprimer">✕</button></div>
+      ${r.message ? `<p class="message">${esc(r.message)}</p>` : ''}</li>`).join('');
+  $('#nb-reponses').hidden = !editing.reponses.length;
+  $('#nb-reponses').textContent = editing.reponses.length;
+}
+
+// Statut proposé selon la réponse, tant que la candidature est en attente.
+const STATUT_REPONSE = { entretien: 'entretien', refus: 'refus', offre: 'offre' };
+
+$('#btn-rep-add').addEventListener('click', () => {
+  const type = $('#rep-type').value;
+  const message = $('#rep-message').value.trim();
+  const date = $('#rep-date').value || today();
+  editing.reponses.push({ id: uid(), date, type, message });
+  editing.historique.push({ id: uid(), date, texte: `Réponse reçue : ${TYPES_REPONSE[type]}` });
+  const form = $('#form-offre');
+  if (STATUT_REPONSE[type] && ['a_postuler', 'postule', 'relance', 'entretien'].includes(form.statut.value)) {
+    form.statut.value = STATUT_REPONSE[type];
+  }
+  $('#rep-message').value = '';
+  renderReponses();
+  renderHistorique();
+  toast('Réponse ajoutée : pensez à enregistrer la candidature.');
+});
 
 function renderAnalyse(res) {
   const el = $('#analyse');
@@ -673,6 +718,10 @@ document.addEventListener('click', (e) => {
   if (ds.editDoc) openDoc(ds.editDoc);
   if (ds.lettre) openLettre(ds.lettre);
 
+  if (ds.delRep) {
+    editing.reponses = editing.reponses.filter((r) => r.id !== ds.delRep);
+    renderReponses();
+  }
   if (ds.delHisto) {
     editing.historique = editing.historique.filter((h) => h.id !== ds.delHisto);
     renderHistorique();

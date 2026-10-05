@@ -9,6 +9,7 @@ Site personnel pour suivre ses candidatures à des offres d'emploi, avec les CV 
 - **Texte de l'offre et mots-clés** : on colle l'annonce, l'analyse repère les compétences techniques IT, les qualités attendues et les mots les plus répétés, et indique celles de votre profil (✓). Le bouton « Préparer pour Claude » copie une demande prête à coller dans Claude (analyse + brouillon de lettre).
 - **Lettres Word** : modèles de lettre (texte saisi dans le site, ou fichier Word importé dont la mise en page est conservée) avec `{entreprise}`, `{poste}`, `{competences}`, `{date}`, `{nom}`, `{ville}` remplis automatiquement ; téléchargement en `.docx`.
 - **CV & lettres** : import des fichiers (Word, PDF, LibreOffice), associés à chaque candidature.
+- **Réponses reçues** : copie de chaque message reçu (e-mail, SMS, notes d'appel) avec sa date et son type ; le statut est proposé automatiquement et le délai moyen de réponse apparaît dans les statistiques.
 - **Suivi** : statuts, historique daté des échanges, date de relance proposée (délai réglable), bandeau et e-mail quotidien des relances à faire, taux de réponse.
 - **Entreprises** : toutes les entreprises contactées avec la date du dernier échange.
 - Recherche sur tous les champs (touche `/`), thème clair / sombre, affichage adapté au smartphone.

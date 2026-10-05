@@ -291,3 +291,16 @@ a.btn { text-decoration: none; display: inline-block; }
 .lien-annonce { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px 0; margin-bottom: 14px; }
 .lien-annonce .row { flex-wrap: nowrap; }
 @media (max-width: 700px) { .lien-annonce .row { flex-wrap: wrap; } .lien-annonce .btn { width: 100%; } }
+
+/* Réponses reçues */
+.reponses { list-style: none; padding: 0; margin: 0 0 12px; }
+.reponses:empty::before { content: "Aucune réponse pour le moment."; color: var(--muted); font-size: 13px; }
+.reponses li { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; margin-bottom: 8px; }
+.reponses .entete { display: flex; gap: 8px; align-items: center; }
+.reponses .entete time { color: var(--muted); font-size: 13px; }
+.reponses .entete button { margin-left: auto; border: none; background: none; color: var(--muted); cursor: pointer; }
+.reponses .message { white-space: pre-wrap; font-size: 14px; margin: 6px 0 0; max-height: 220px; overflow: auto; }
+.r-entretien { background: #e5dcef; color: #4b2d6e; }
+.r-refus { background: #f2d6d2; color: #85281d; }
+.r-offre { background: #d3ead9; color: #1f5a31; }
+.r-autre { background: #e4e3df; color: #3d4144; }
