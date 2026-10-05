@@ -800,7 +800,62 @@ function renderSettings() {
   form.smtpPass.placeholder = r.smtpPassDefini ? '•••••••• (enregistré, laisser vide pour garder)' : '16 caractères, fourni par Google';
   $('#user-name').textContent = state.utilisateur.username || '';
   $('#card-users').hidden = !state.utilisateur.isAdmin;
+  renderChoixProfil();
 }
+
+// Liste à cocher des compétences du dictionnaire (keywords.js), par thème.
+const THEMES_PROFIL = [
+  ['Systèmes et postes de travail', ['Windows', 'Windows Server', 'Linux', 'macOS', 'Active Directory', 'GPO', 'Microsoft 365',
+    'Exchange', 'Entra ID / Azure AD', 'Intune', 'SCCM / MECM', 'WSUS', 'Déploiement de postes', 'Sécurité des postes']],
+  ['Réseau et sécurité', ['Réseau', 'TCP/IP', 'DNS / DHCP', 'VLAN', 'Wi-Fi', 'Cisco', 'HP / Aruba', 'Fortinet', 'Stormshield',
+    'Pare-feu', 'VPN', 'Sécurité', 'Câblage / brassage', 'Téléphonie / ToIP']],
+  ['Virtualisation, cloud et sauvegarde', ['Virtualisation', 'VMware', 'Hyper-V', 'Proxmox', 'Docker', 'Kubernetes', 'Cloud',
+    'Azure', 'AWS', 'Stockage / NAS', 'Sauvegarde']],
+  ['Support et outils', ['Helpdesk', 'Support N1', 'Support N2', 'Support N3', 'Ticketing', 'GLPI', 'ServiceNow', 'ITIL',
+    'Supervision', 'Inventaire', 'Matériel', 'Maintenance', 'Dépannage', 'RGPD']],
+  ['Scripts et bases de données', ['PowerShell', 'Bash / Shell', 'Python', 'Scripting', 'SQL']],
+  ['Conditions', ['Anglais', 'Permis B', 'Déplacements', 'Astreintes']],
+];
+
+// Morceaux du profil : une compétence par ligne ou séparées par des virgules.
+const morceauxProfil = (profil) => profil.split('\n').map((l) => l.split(',').map((m) => m.trim()));
+
+function renderChoixProfil() {
+  const profil = $('#form-settings').profil.value;
+  // Nombre d'annonces enregistrées qui demandent chaque compétence.
+  const demandes = {};
+  state.offres.forEach((o) => {
+    if (!o.texteOffre) return;
+    const res = analyseOffre(o.texteOffre);
+    [...res.tech, ...res.soft].forEach((k) => { demandes[k.label] = (demandes[k.label] || 0) + 1; });
+  });
+  const classes = new Set(THEMES_PROFIL.flatMap(([, labels]) => labels));
+  const themes = [...THEMES_PROFIL,
+    ['Autres compétences', Object.keys(KW_TECH).filter((l) => !classes.has(l))],
+    ['Qualités', Object.keys(KW_SOFT)]];
+  $('#profil-choix').innerHTML = themes.filter(([, labels]) => labels.length).map(([titre, labels]) => `
+    <div class="kw-group"><h4>${esc(titre)}</h4>${labels.map((l) => `<button type="button" data-competence="${esc(l)}"
+      class="chip${profil && profilContient(profil, { label: l }) ? ' have' : ''}">${esc(l)}${demandes[l] ? ` <small>${demandes[l]}</small>` : ''}</button>`).join('')}</div>`).join('');
+}
+
+$('#profil-choix').addEventListener('click', (e) => {
+  const label = e.target.closest('[data-competence]')?.dataset.competence;
+  if (!label) return;
+  const champ = $('#form-settings').profil;
+  const morceaux = morceauxProfil(champ.value);
+  const present = morceaux.some((l) => l.some((m) => m.toLowerCase() === label.toLowerCase()));
+  if (present) {
+    champ.value = morceaux.map((l) => l.filter((m) => m.toLowerCase() !== label.toLowerCase()).join(', '))
+      .filter(Boolean).join('\n');
+  } else if (champ.value && profilContient(champ.value, { label })) {
+    toast('Déjà dans votre profil sous un autre nom : modifiez le texte pour la retirer.');
+    return;
+  } else {
+    champ.value = [champ.value.trim(), label].filter(Boolean).join('\n');
+  }
+  renderChoixProfil();
+  champ.dispatchEvent(new Event('change', { bubbles: true }));
+});
 
 let saveQueue = Promise.resolve();
 
