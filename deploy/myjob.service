@@ -1,0 +1,23 @@
+[Unit]
+Description=MyJob - suivi des candidatures
+After=network.target
+
+[Service]
+Type=simple
+User=myjob
+Group=myjob
+WorkingDirectory=/opt/myjob
+EnvironmentFile=/etc/myjob/myjob.env
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=5
+
+# Durcissement
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/myjob
+
+[Install]
+WantedBy=multi-user.target

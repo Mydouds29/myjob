@@ -52,6 +52,11 @@ const KW_TECH = {
   'Helpdesk': ['helpdesk', 'help desk', 'service desk', 'hotline', 'support utilisateurs', 'assistance utilisateurs'],
   'Déploiement de postes': ['deploiement', 'masterisation', 'mastering', 'installation de postes', 'parc informatique', 'gestion de parc'],
   'Matériel': ['materiel', 'hardware', 'imprimante', 'imprimantes', 'peripheriques'],
+  'Maintenance': ['maintenance', 'maintenance informatique', 'maintenance preventive', 'maintenance curative'],
+  'Dépannage': ['depannage', 'depanner', 'reparation', 'reparer', 'diagnostic materiel'],
+  'Câblage / brassage': ['cablage', 'brassage', 'baie de brassage', 'fibre optique'],
+  'Inventaire': ['inventaire', 'inventaires', 'ocs inventory'],
+  'Sécurité des postes': ['antivirus', 'bitlocker', 'chiffrement'],
   'Téléphonie / ToIP': ['telephonie', 'toip', 'voip', '3cx'],
   'Stockage / NAS': ['nas', 'san', 'stockage', 'synology'],
   'Cloud': ['cloud'],
@@ -131,4 +136,12 @@ function analyseOffre(text) {
     .map(([label, n]) => ({ label, n }));
 
   return { tech, soft, frequents };
+}
+
+// Indique si le profil saisi dans les paramètres mentionne ce mot-clé
+// (son libellé ou l'une de ses variantes du dictionnaire).
+function profilContient(profil, kw) {
+  const norm = kwNormalize(profil.replace(/[,;\n]+/g, ' , '));
+  const terms = [...(KW_TECH[kw.label] || KW_SOFT[kw.label] || []), kwNormalize(kw.label).trim()];
+  return terms.some((t) => t && kwCount(norm, t) > 0);
 }

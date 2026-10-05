@@ -1,0 +1,11 @@
+# Caddy obtient et renouvelle seul le certificat HTTPS (Let's Encrypt).
+# Prérequis : le nom pointe vers votre IP publique (DNS chez OVH) et les
+# ports 80 et 443 de la box sont redirigés vers ce conteneur.
+myjob.mydouds.fr {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}

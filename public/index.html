@@ -4,13 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MyJob · Suivi des candidatures</title>
-  <script>
-    // Appliqué avant l'affichage pour éviter un flash de thème.
-    try {
-      const t = JSON.parse(localStorage.getItem('myjob.v1'))?.settings?.theme;
-      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-    } catch {}
-  </script>
+  <script src="js/theme.js"></script>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -22,6 +16,8 @@
       <button class="tab" data-view="documents" role="tab">CV &amp; lettres</button>
       <button class="tab" data-view="parametres" role="tab">Paramètres</button>
     </nav>
+    <span id="user-name" class="user"></span>
+    <button id="btn-logout" class="btn small">Déconnexion</button>
   </header>
 
   <main>
@@ -81,13 +77,13 @@
     <!-- Vue documents -->
     <section id="view-documents" class="view" hidden>
       <div class="toolbar">
-        <p class="hint">Vos versions de CV et de lettres (lien vers le fichier), et vos modèles de lettre. Dans un modèle, {entreprise}, {poste}, {competences} et {date} sont remplacés automatiquement.</p>
+        <p class="hint">Importez vos versions de CV et de lettres, et vos modèles de lettre. Dans un modèle, {entreprise}, {poste}, {competences}, {date}, {nom} et {ville} sont remplacés automatiquement.</p>
         <button id="btn-add-doc" class="btn primary">+ Nouveau document</button>
       </div>
       <div class="table-wrap">
         <table class="list">
           <thead>
-            <tr><th>Type</th><th>Nom</th><th>Lien</th><th>Utilisé dans</th><th></th></tr>
+            <tr><th>Type</th><th>Nom</th><th>Fichier</th><th>Utilisé dans</th><th></th></tr>
           </thead>
           <tbody id="docs-body"></tbody>
         </table>
@@ -97,24 +93,72 @@
 
     <!-- Vue paramètres -->
     <section id="view-parametres" class="view" hidden>
-      <form id="form-settings" class="card">
-        <h2>Paramètres</h2>
-        <label>Thème
-          <select name="theme">
-            <option value="auto">Automatique (selon l'appareil)</option>
-            <option value="light">Clair</option>
-            <option value="dark">Sombre</option>
-          </select>
-        </label>
-        <label>Délai de relance par défaut (jours après la candidature, 0 = aucun)
-          <input name="delaiRelance" type="number" min="0" max="90">
-        </label>
-        <label class="check"><input name="alerteRelances" type="checkbox"> Afficher un bandeau quand des relances sont à faire</label>
-        <p class="hint">Les rappels par e-mail arriveront avec la version serveur.</p>
-        <h2>Sauvegarde</h2>
-        <div class="row">
-          <button type="button" id="btn-export" class="btn">Exporter (JSON)</button>
-          <label class="btn">Importer<input id="input-import" type="file" accept="application/json" hidden></label>
+      <form id="form-settings" class="settings" autocomplete="off">
+        <div class="card">
+          <h2>Apparence et suivi</h2>
+          <label>Thème
+            <select name="theme">
+              <option value="auto">Automatique (selon l'appareil)</option>
+              <option value="light">Clair</option>
+              <option value="dark">Sombre</option>
+            </select>
+          </label>
+          <label>Délai de relance par défaut (jours après la candidature, 0 = aucun)
+            <input name="delaiRelance" type="number" min="0" max="90">
+          </label>
+          <label class="check"><input name="alerteRelances" type="checkbox"> Afficher un bandeau quand des relances sont à faire</label>
+        </div>
+
+        <div class="card">
+          <h2>Mon profil</h2>
+          <label>Nom complet (pour les lettres : {nom})<input name="nomComplet"></label>
+          <label>Ville (pour les lettres : {ville})<input name="ville"></label>
+          <label>Mes compétences, une par ligne ou séparées par des virgules
+            <textarea name="profil" rows="6" placeholder="Windows, Active Directory, GLPI, maintenance matériel, réseau…"></textarea>
+          </label>
+          <p class="hint">L'analyse des offres indique les compétences demandées que vous avez déjà (✓).</p>
+        </div>
+
+        <div class="card">
+          <h2>Rappels par e-mail</h2>
+          <label class="check"><input name="emailRelances" type="checkbox"> Recevoir chaque matin la liste des relances à faire</label>
+          <label>Adresse qui reçoit les rappels<input name="emailDestinataire" type="email" placeholder="vous@exemple.fr"></label>
+          <label>Adresse Gmail d'envoi<input name="smtpUser" type="email" placeholder="votre.compte@gmail.com"></label>
+          <label>Mot de passe d'application Gmail
+            <input name="smtpPass" type="password" autocomplete="new-password" placeholder="16 caractères, fourni par Google">
+          </label>
+          <p class="hint">À créer sur myaccount.google.com/apppasswords (validation en deux étapes requise). Ce n'est pas votre mot de passe Gmail.</p>
+          <details>
+            <summary>Serveur d'envoi (autre que Gmail)</summary>
+            <label>Serveur SMTP<input name="smtpHost"></label>
+            <label>Port<input name="smtpPort" type="number"></label>
+          </details>
+          <button type="button" id="btn-test-email" class="btn">Envoyer un e-mail de test</button>
+        </div>
+
+        <div class="card">
+          <h2>Mot de passe</h2>
+          <label>Mot de passe actuel<input id="mdp-actuel" type="password" autocomplete="current-password"></label>
+          <label>Nouveau mot de passe (10 caractères minimum)<input id="mdp-nouveau" type="password" autocomplete="new-password"></label>
+          <button type="button" id="btn-mdp" class="btn">Changer le mot de passe</button>
+        </div>
+
+        <div class="card" id="card-users" hidden>
+          <h2>Comptes</h2>
+          <ul id="users" class="users"></ul>
+          <label>Identifiant<input id="new-user" autocomplete="off"></label>
+          <label>Mot de passe<input id="new-user-pass" type="password" autocomplete="new-password"></label>
+          <label class="check"><input id="new-user-admin" type="checkbox"> Administrateur</label>
+          <button type="button" id="btn-add-user" class="btn">Créer le compte</button>
+        </div>
+
+        <div class="card">
+          <h2>Sauvegarde</h2>
+          <p class="hint">Export de vos candidatures, documents et réglages (sans les fichiers, sauvegardés chaque nuit avec la base).</p>
+          <div class="row">
+            <a class="btn" href="api/export" download>Exporter (JSON)</a>
+            <label class="btn">Importer<input id="input-import" type="file" accept="application/json" hidden></label>
+          </div>
         </div>
       </form>
     </section>
@@ -161,7 +205,10 @@
         <label>Collez ici le texte de l'annonce
           <textarea name="texteOffre" rows="8"></textarea>
         </label>
-        <button type="button" id="btn-analyse" class="btn">Analyser les mots-clés</button>
+        <div class="row">
+          <button type="button" id="btn-analyse" class="btn">Analyser les mots-clés</button>
+          <button type="button" id="btn-prompt" class="btn" title="Copie une demande prête à coller dans Claude">Préparer pour Claude</button>
+        </div>
         <div id="analyse"></div>
       </details>
 
@@ -196,7 +243,10 @@
         </select>
       </label>
       <label>Nom *<input name="nom" required placeholder="ex. CV Technicien support v3"></label>
-      <label class="not-modele">Lien<input name="lien" type="url" placeholder="https://"></label>
+      <label>Fichier (Word, PDF, LibreOffice)<input name="fichier" type="file" accept=".docx,.doc,.odt,.pdf,.rtf,.txt"></label>
+      <p id="fichier-actuel" class="fichier-actuel" hidden></p>
+      <p class="hint only-modele">Pour un modèle, importez un fichier Word (.docx) contenant {entreprise}, {poste}, {competences}, {date}, {nom}, {ville} : sa mise en page sera conservée. Ou écrivez le texte ci-dessous.</p>
+      <label class="not-modele">Lien (facultatif)<input name="lien" type="url" placeholder="https://"></label>
       <label class="only-modele">Texte du modèle
         <textarea name="contenu" rows="12" placeholder="Madame, Monsieur,&#10;&#10;Votre offre de {poste} chez {entreprise} a retenu toute mon attention…"></textarea>
       </label>
@@ -213,10 +263,12 @@
     <form method="dialog">
       <h2>Lettre générée</h2>
       <label>Modèle<select id="lettre-modele"></select></label>
+      <p id="lettre-word" class="hint" hidden>Ce modèle est un fichier Word : la lettre gardera sa mise en page.</p>
       <textarea id="lettre-texte" rows="16"></textarea>
       <div class="dlg-actions">
         <button type="button" class="btn ghost" data-close>Fermer</button>
-        <button type="button" id="btn-copy-lettre" class="btn primary">Copier</button>
+        <button type="button" id="btn-copy-lettre" class="btn">Copier le texte</button>
+        <button type="button" id="btn-docx-lettre" class="btn primary">Télécharger en Word</button>
       </div>
     </form>
   </dialog>

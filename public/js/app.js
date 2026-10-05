@@ -1,9 +1,6 @@
 // MyJob : suivi des candidatures, CV et lettres de motivation.
-// Pour l'instant les données sont stockées dans le navigateur (localStorage)
-// et peuvent être exportées / importées en JSON. load() et save() sont les
-// seuls points d'accès au stockage, pour pouvoir brancher un serveur ensuite.
-
-const STORAGE_KEY = 'myjob.v1';
+// Les données sont sur le serveur (API /api, voir server/modules) ; l'état
+// complet du compte est chargé au démarrage puis tenu à jour à chaque action.
 
 const STATUTS = [
   { id: 'a_postuler', label: 'À postuler' },
@@ -18,38 +15,71 @@ const statutLabel = (id) => STATUTS.find((s) => s.id === id)?.label ?? id;
 const EN_ATTENTE = ['postule', 'relance'];
 const AVEC_REPONSE = ['entretien', 'offre', 'refus'];
 
-const DEFAULT_SETTINGS = { theme: 'auto', delaiRelance: 10, alerteRelances: true };
+let state = { offres: [], documents: [], reglages: {}, utilisateur: {} };
 
-// ---------- Données ----------
+// ---------- Accès au serveur ----------
 
-function load() {
-  let data;
-  try { data = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { /* invalide */ }
-  if (!data || !Array.isArray(data.offres) || !Array.isArray(data.documents)) {
-    data = { offres: [], documents: [] };
+async function api(method, url, body) {
+  const opts = { method, headers: {} };
+  if (body instanceof FormData) opts.body = body;
+  else if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
   }
-  data.settings = { ...DEFAULT_SETTINGS, ...data.settings };
-  data.offres.forEach((o) => {
-    o.type ??= 'offre';
-    o.historique ??= [];
-    o.motsCles ??= [];
-  });
-  return data;
+  const res = await fetch(`api/${url}`, opts);
+  if (res.status === 401 && url !== 'compte/mot-de-passe') {
+    location.href = 'login.html';
+    throw new Error('Session expirée');
+  }
+  if (!res.ok) {
+    const msg = (await res.json().catch(() => ({}))).error || `Erreur ${res.status}`;
+    throw new Error(msg);
+  }
+  const type = res.headers.get('content-type') || '';
+  return type.includes('application/json') ? res.json() : res.blob();
 }
 
-let state = load();
-
-function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function toast(message, isError = false) {
+  document.querySelectorAll('.toast').forEach((t) => t.remove());
+  const el = document.createElement('div');
+  el.className = `toast${isError ? ' err' : ''}`;
+  el.textContent = message;
+  document.body.append(el);
+  setTimeout(() => el.remove(), isError ? 5000 : 2500);
 }
 
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const today = () => new Date().toISOString().slice(0, 10);
+// Exécute une action et affiche l'erreur éventuelle plutôt que de l'ignorer.
+async function run(fn) {
+  try { return await fn(); } catch (err) { toast(err.message, true); return undefined; }
+}
+
+function download(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function normaliser(o) {
+  o.type ??= 'offre';
+  o.historique ??= [];
+  o.motsCles ??= [];
+  return o;
+}
+
+async function chargerEtat() {
+  state = await api('GET', 'etat');
+  state.offres.forEach(normaliser);
+}
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+const today = () => new Date().toLocaleDateString('sv-SE');
 
 function addDays(iso, n) {
   const d = new Date(iso + 'T12:00:00');
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString('sv-SE');
 }
 
 // ---------- Utilitaires d'affichage ----------
@@ -72,19 +102,22 @@ function fmtDate(iso) {
   return `${d}/${m}/${y}`;
 }
 
+function fileUrl(doc) {
+  return doc?.fichier ? `api/documents/${doc.id}/fichier` : safeUrl(doc?.lien);
+}
+
 function docLink(id) {
   const doc = state.documents.find((d) => d.id === id);
   if (!doc) return '';
-  const url = safeUrl(doc.lien);
-  return url
-    ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(doc.nom)}</a>`
-    : esc(doc.nom);
+  const url = fileUrl(doc);
+  return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(doc.nom)}</a>` : esc(doc.nom);
 }
 
 function applyTheme() {
-  const t = state.settings.theme;
+  const t = state.reglages.theme;
   if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
   else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem('myjob.theme', t); } catch { /* indisponible */ }
 }
 
 const relanceDue = (o) => o.dateRelance && o.dateRelance <= today() && EN_ATTENTE.includes(o.statut);
@@ -117,7 +150,7 @@ function renderStats() {
 function renderRelances() {
   const dues = state.offres.filter(relanceDue);
   const el = $('#relances');
-  el.hidden = !state.settings.alerteRelances || dues.length === 0;
+  el.hidden = !state.reglages.alerteRelances || dues.length === 0;
   el.innerHTML = dues.length
     ? `<strong>${dues.length} relance${dues.length > 1 ? 's' : ''} à faire :</strong> `
       + dues.map((o) => `<a href="#" data-edit-offre="${o.id}">${esc(o.entreprise)}</a>`).join(', ')
@@ -205,11 +238,12 @@ function openOffre(id) {
   const form = $('#form-offre');
   const existing = state.offres.find((x) => x.id === id);
   const d = today();
+  const delai = state.reglages.delaiRelance;
   editing = existing
     ? structuredClone(existing)
     : {
       type: 'offre', statut: 'postule', dateCandidature: d, historique: [], motsCles: [],
-      dateRelance: state.settings.delaiRelance > 0 ? addDays(d, state.settings.delaiRelance) : '',
+      dateRelance: delai > 0 ? addDays(d, delai) : '',
     };
   form.reset();
   $('#dlg-offre-title').textContent = existing ? 'Candidature' : 'Nouvelle candidature';
@@ -238,25 +272,77 @@ function renderHistorique() {
 function renderAnalyse(res) {
   const el = $('#analyse');
   if (!res) { el.innerHTML = ''; return; }
-  const group = (title, list, cls) => (list.length ? `
-    <div class="kw-group"><h4>${title}</h4>${list.map((k) =>
-      `<span class="chip ${cls}">${esc(k.label)}${k.n > 1 ? ` <small>×${k.n}</small>` : ''}</span>`).join('')}</div>` : '');
-  el.innerHTML = (group('Compétences techniques', res.tech, 'tech')
-    + group('Qualités attendues', res.soft, '')
-    + group('Mots les plus répétés', res.frequents, ''))
+  const profil = state.reglages.profil || '';
+  const chips = (list, cls) => list.map((k) => {
+    const have = cls !== 'freq' && profil && profilContient(profil, k);
+    return `<span class="chip ${cls}${have ? ' have' : ''}">${esc(k.label)}${k.n > 1 ? ` <small>×${k.n}</small>` : ''}</span>`;
+  }).join('');
+  const group = (title, list, cls) => (list.length ? `<div class="kw-group"><h4>${title}</h4>${chips(list, cls)}</div>` : '');
+
+  let match = '';
+  if (profil && res.tech.length) {
+    const n = res.tech.filter((k) => profilContient(profil, k)).length;
+    match = `<p class="match">Vous avez <strong>${n} des ${res.tech.length}</strong> compétences techniques repérées (✓). Mettez-les en avant dans la lettre.</p>`;
+  } else if (res.tech.length) {
+    match = '<p class="hint">Renseignez vos compétences dans Paramètres pour voir celles que vous avez déjà.</p>';
+  }
+  el.innerHTML = (match + group('Compétences techniques', res.tech, 'tech')
+    + group('Qualités attendues', res.soft, 'soft')
+    + group('Mots les plus répétés', res.frequents, 'freq'))
     || '<p class="hint">Aucun mot-clé repéré. Collez le texte complet de l\'annonce.</p>';
+}
+
+function promptClaude(form) {
+  const res = analyseOffre(form.texteOffre.value);
+  const motsCles = [...res.tech, ...res.soft].map((k) => k.label).join(', ');
+  return [
+    `Je postule au poste de « ${form.poste.value || 'non précisé'} » chez ${form.entreprise.value || 'une entreprise'}${form.lieu.value ? ` (${form.lieu.value})` : ''}.`,
+    '',
+    'Mon profil : technicien de maintenance informatique, compétences polyvalentes.',
+    state.reglages.profil ? `Mes compétences : ${state.reglages.profil.replace(/\s*\n\s*/g, ', ')}` : '',
+    '',
+    motsCles ? `Mots-clés repérés dans l'annonce : ${motsCles}` : '',
+    '',
+    'Peux-tu :',
+    '1. lister les 5 attentes principales du recruteur et ce qu\'il faut mettre en avant ;',
+    '2. indiquer les points de mon profil qui correspondent et ceux à compenser ;',
+    '3. rédiger une lettre de motivation sobre (moins d\'une page), en français, qui reprend ces mots-clés sans en abuser.',
+    '',
+    'Voici l\'annonce :',
+    '"""',
+    form.texteOffre.value.trim() || '(candidature spontanée, pas d\'annonce)',
+    '"""',
+  ].filter((l, i, arr) => l !== '' || arr[i - 1] !== '').join('\n');
+}
+
+async function copier(texte) {
+  try {
+    await navigator.clipboard.writeText(texte);
+  } catch {
+    const t = document.createElement('textarea');
+    t.value = texte;
+    document.body.append(t);
+    t.select();
+    document.execCommand('copy');
+    t.remove();
+  }
 }
 
 $('#form-offre').addEventListener('change', (e) => {
   if (e.target.name === 'type') setOffreType(e.target.value);
-  if (e.target.name === 'dateCandidature' && e.target.value && !e.target.form.dateRelance.value
-      && state.settings.delaiRelance > 0) {
-    e.target.form.dateRelance.value = addDays(e.target.value, state.settings.delaiRelance);
+  const delai = state.reglages.delaiRelance;
+  if (e.target.name === 'dateCandidature' && e.target.value && !e.target.form.dateRelance.value && delai > 0) {
+    e.target.form.dateRelance.value = addDays(e.target.value, delai);
   }
 });
 
 $('#btn-analyse').addEventListener('click', () => {
   renderAnalyse(analyseOffre($('#form-offre').texteOffre.value));
+});
+
+$('#btn-prompt').addEventListener('click', async () => {
+  await copier(promptClaude($('#form-offre')));
+  toast('Demande copiée : collez-la dans Claude (claude.ai).');
 });
 
 $('#btn-histo-add').addEventListener('click', () => {
@@ -270,25 +356,34 @@ $('#histo-texte').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); $('#btn-histo-add').click(); }
 });
 
-$('#form-offre').addEventListener('submit', (e) => {
+$('#form-offre').addEventListener('submit', async (e) => {
+  e.preventDefault();
   const data = Object.fromEntries(new FormData(e.target));
   const prev = state.offres.find((o) => o.id === data.id);
   const offre = { ...editing, ...data };
   const res = analyseOffre(offre.texteOffre);
-  offre.motsCles = offre.texteOffre ? [...res.tech, ...res.soft].map((k) => k.label) : [];
+  // Les compétences que l'on possède passent en premier : ce sont elles que la lettre reprend.
+  const profil = state.reglages.profil || '';
+  const tech = [...res.tech].sort((a, b) => Number(Boolean(profil) && profilContient(profil, b)) - Number(Boolean(profil) && profilContient(profil, a)));
+  offre.motsCles = offre.texteOffre ? [...tech, ...res.soft].map((k) => k.label) : [];
 
   if (prev && prev.statut !== offre.statut) {
     offre.historique.push({ id: uid(), date: today(), texte: `Statut : ${statutLabel(offre.statut)}` });
   }
   if (prev) {
-    Object.assign(prev, offre, { majLe: today() });
+    offre.majLe = today();
   } else {
+    offre.id = uid();
+    offre.creeLe = today();
     offre.historique.push({ id: uid(), date: offre.dateCandidature || today(),
       texte: offre.statut === 'a_postuler' ? 'Ajoutée à la liste' : 'Candidature envoyée' });
-    state.offres.push({ ...offre, id: uid(), creeLe: today() });
   }
+  const saved = await run(() => api('PUT', `offres/${offre.id}`, offre));
+  if (!saved) return;
+  if (prev) Object.assign(prev, normaliser(saved));
+  else state.offres.push(normaliser(saved));
   editing = null;
-  save();
+  $('#dlg-offre').close();
   renderAll();
 });
 
@@ -296,23 +391,21 @@ $('#form-offre').addEventListener('submit', (e) => {
 
 let lettreOffre = null;
 
-function fillLettre() {
-  const modele = state.documents.find((d) => d.id === $('#lettre-modele').value);
-  const o = lettreOffre;
-  const competences = o.motsCles.slice(0, 6).join(', ');
-  const date = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-  $('#lettre-texte').value = (modele?.contenu || '')
-    .replaceAll('{entreprise}', o.entreprise || '')
-    .replaceAll('{poste}', o.poste || '')
-    .replaceAll('{competences}', competences)
-    .replaceAll('{date}', date);
+async function fillLettre() {
+  const modeleId = $('#lettre-modele').value;
+  const r = await run(() => api('POST', `offres/${lettreOffre.id}/lettre/apercu`, { modeleId }));
+  if (!r) return;
+  $('#lettre-word').hidden = !r.modeleWord;
+  $('#lettre-texte').hidden = r.modeleWord;
+  $('#btn-copy-lettre').hidden = r.modeleWord;
+  $('#lettre-texte').value = r.texte;
 }
 
 function openLettre(id) {
   lettreOffre = state.offres.find((o) => o.id === id);
   const modeles = state.documents.filter((d) => d.type === 'modele');
   if (!modeles.length) {
-    alert('Créez d\'abord un modèle de lettre dans l\'onglet « CV & lettres ».');
+    toast('Créez d\'abord un modèle de lettre dans l\'onglet « CV & lettres ».', true);
     return;
   }
   $('#lettre-modele').innerHTML = modeles.map((m) => `<option value="${m.id}">${esc(m.nom)}</option>`).join('');
@@ -322,11 +415,17 @@ function openLettre(id) {
 
 $('#lettre-modele').addEventListener('change', fillLettre);
 $('#btn-copy-lettre').addEventListener('click', async (e) => {
-  const txt = $('#lettre-texte');
-  try { await navigator.clipboard.writeText(txt.value); } catch { txt.select(); document.execCommand('copy'); }
-  e.target.textContent = 'Copiée ✓';
-  setTimeout(() => { e.target.textContent = 'Copier'; }, 1500);
+  await copier($('#lettre-texte').value);
+  e.target.textContent = 'Copié ✓';
+  setTimeout(() => { e.target.textContent = 'Copier le texte'; }, 1500);
 });
+$('#btn-docx-lettre').addEventListener('click', () => run(async () => {
+  const body = { modeleId: $('#lettre-modele').value };
+  if (!$('#lettre-texte').hidden) body.texte = $('#lettre-texte').value; // texte retouché
+  const blob = await api('POST', `offres/${lettreOffre.id}/lettre.docx`, body);
+  const nom = `Lettre_${lettreOffre.entreprise}`.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '_');
+  download(blob, `${nom}.docx`);
+}));
 
 // ---------- Vue entreprises ----------
 
@@ -361,11 +460,12 @@ const DOC_TYPES = { cv: 'CV', lettre: 'Lettre', modele: 'Modèle' };
 function renderDocs() {
   $('#docs-body').innerHTML = state.documents.map((d) => {
     const usages = state.offres.filter((o) => o.cvId === d.id || o.lettreId === d.id);
-    const url = safeUrl(d.lien);
+    const url = fileUrl(d);
+    const label = d.fichier ? d.fichier.nom : 'Lien';
     return `<tr>
-      <td>${DOC_TYPES[d.type] || d.type}</td>
+      <td>${DOC_TYPES[d.type] || esc(d.type)}</td>
       <td><strong>${esc(d.nom)}</strong>${d.notes ? `<div class="sub">${esc(d.notes)}</div>` : ''}</td>
-      <td>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">Ouvrir</a>` : ''}</td>
+      <td data-label="Fichier">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : ''}</td>
       <td class="sub">${d.type === 'modele' ? '' : usages.length
         ? usages.map((o) => esc(o.entreprise)).join(', ')
         : 'Aucune candidature'}</td>
@@ -385,22 +485,39 @@ function openDoc(id) {
   $('#dlg-doc-title').textContent = id ? 'Modifier le document' : 'Nouveau document';
   ['id', 'type', 'nom', 'lien', 'contenu', 'notes'].forEach((k) => { form[k].value = d[k] ?? ''; });
   form.dataset.doctype = d.type;
+  $('#fichier-actuel').hidden = !d.fichier;
+  $('#fichier-actuel').textContent = d.fichier ? `Fichier actuel : ${d.fichier.nom} (choisissez-en un autre pour le remplacer)` : '';
   $('#dlg-doc').showModal();
 }
 
 $('#form-doc').addEventListener('change', (e) => {
   if (e.target.name === 'type') e.target.form.dataset.doctype = e.target.value;
+  // Propose le nom du fichier comme nom du document.
+  if (e.target.name === 'fichier' && e.target.files[0] && !e.target.form.nom.value) {
+    e.target.form.nom.value = e.target.files[0].name.replace(/\.[^.]+$/, '');
+  }
 });
 
-$('#form-doc').addEventListener('submit', (e) => {
-  const data = Object.fromEntries(new FormData(e.target));
-  if (data.id) {
-    const i = state.documents.findIndex((d) => d.id === data.id);
-    state.documents[i] = { ...state.documents[i], ...data };
-  } else {
-    state.documents.push({ ...data, id: uid() });
+$('#form-doc').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const data = Object.fromEntries(new FormData(form));
+  const file = form.fichier.files[0];
+  delete data.fichier;
+  const prev = state.documents.find((d) => d.id === data.id);
+  const doc = { ...prev, ...data, id: data.id || uid() };
+  delete doc.fichier;
+
+  let saved = await run(() => api('PUT', `documents/${doc.id}`, doc));
+  if (!saved) return;
+  if (file) {
+    const fd = new FormData();
+    fd.append('fichier', file);
+    saved = (await run(() => api('POST', `documents/${doc.id}/fichier`, fd))) || saved;
   }
-  save();
+  if (prev) Object.assign(prev, saved);
+  else state.documents.push(saved);
+  $('#dlg-doc').close();
   renderAll();
 });
 
@@ -408,50 +525,99 @@ $('#form-doc').addEventListener('submit', (e) => {
 
 function renderSettings() {
   const form = $('#form-settings');
-  form.theme.value = state.settings.theme;
-  form.delaiRelance.value = state.settings.delaiRelance;
-  form.alerteRelances.checked = state.settings.alerteRelances;
+  const r = state.reglages;
+  ['theme', 'delaiRelance', 'nomComplet', 'ville', 'profil', 'emailDestinataire', 'smtpUser', 'smtpHost', 'smtpPort']
+    .forEach((k) => { if (document.activeElement !== form[k]) form[k].value = r[k] ?? ''; });
+  form.alerteRelances.checked = r.alerteRelances;
+  form.emailRelances.checked = r.emailRelances;
+  form.smtpPass.placeholder = r.smtpPassDefini ? '•••••••• (enregistré, laisser vide pour garder)' : '16 caractères, fourni par Google';
+  $('#user-name').textContent = state.utilisateur.username || '';
+  $('#card-users').hidden = !state.utilisateur.isAdmin;
 }
 
+let saveQueue = Promise.resolve();
+
 $('#form-settings').addEventListener('change', (e) => {
+  if (!e.target.name) return; // champs hors réglages (mot de passe, comptes, import)
   const form = e.currentTarget;
-  state.settings = {
-    ...state.settings,
+  const values = {
     theme: form.theme.value,
     delaiRelance: Math.max(0, parseInt(form.delaiRelance.value, 10) || 0),
     alerteRelances: form.alerteRelances.checked,
+    nomComplet: form.nomComplet.value,
+    ville: form.ville.value,
+    profil: form.profil.value,
+    emailRelances: form.emailRelances.checked,
+    emailDestinataire: form.emailDestinataire.value,
+    smtpUser: form.smtpUser.value.trim(),
+    smtpPass: form.smtpPass.value.replace(/\s+/g, ''),
+    smtpHost: form.smtpHost.value.trim(),
+    smtpPort: parseInt(form.smtpPort.value, 10) || 465,
   };
-  save();
-  applyTheme();
-  renderOffres();
+  // Les enregistrements sont faits l'un après l'autre, dans l'ordre des modifications.
+  saveQueue = saveQueue.then(() => run(async () => {
+    state.reglages = await api('PUT', 'reglages', values);
+    if (values.smtpPass) form.smtpPass.value = '';
+    applyTheme();
+    renderSettings();
+    renderOffres();
+    toast('Réglages enregistrés');
+  }));
 });
 
-$('#btn-export').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `myjob-sauvegarde-${today()}.json`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-});
+$('#btn-test-email').addEventListener('click', () => run(async () => {
+  const r = await api('POST', 'rappels/test');
+  toast(`E-mail de test envoyé à ${r.destinataire}`);
+}));
+
+$('#btn-mdp').addEventListener('click', () => run(async () => {
+  await api('POST', 'compte/mot-de-passe', { actuel: $('#mdp-actuel').value, nouveau: $('#mdp-nouveau').value });
+  $('#mdp-actuel').value = '';
+  $('#mdp-nouveau').value = '';
+  toast('Mot de passe modifié');
+}));
+
+function renderUsers(users) {
+  $('#users').innerHTML = users.map((u) => `
+    <li><span>${esc(u.username)}${u.isAdmin ? ' <span class="tag">admin</span>' : ''}</span>
+      ${u.username === state.utilisateur.username ? '' : `<button type="button" class="btn small danger" data-del-user="${u.id}" data-username="${esc(u.username)}">Supprimer</button>`}</li>`).join('');
+}
+
+async function loadUsers() {
+  if (state.utilisateur.isAdmin) renderUsers(await api('GET', 'utilisateurs'));
+}
+
+$('#btn-add-user').addEventListener('click', () => run(async () => {
+  renderUsers(await api('POST', 'utilisateurs', {
+    username: $('#new-user').value, password: $('#new-user-pass').value, isAdmin: $('#new-user-admin').checked,
+  }));
+  $('#new-user').value = '';
+  $('#new-user-pass').value = '';
+  $('#new-user-admin').checked = false;
+  toast('Compte créé');
+}));
 
 $('#input-import').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    if (!Array.isArray(data.offres) || !Array.isArray(data.documents)) throw new Error('format');
-    if (confirm(`Remplacer les données actuelles par ${data.offres.length} candidature(s) et ${data.documents.length} document(s) ?`)) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      state = load();
-      save();
-      applyTheme();
-      renderAll();
-    }
-  } catch {
-    alert('Fichier invalide : ce n\'est pas une sauvegarde MyJob.');
-  }
+  run(async () => {
+    let data;
+    try { data = JSON.parse(await file.text()); } catch { throw new Error('Fichier invalide : ce n\'est pas une sauvegarde MyJob.'); }
+    if (!Array.isArray(data.offres) || !Array.isArray(data.documents)) throw new Error('Fichier invalide : ce n\'est pas une sauvegarde MyJob.');
+    if (!confirm(`Remplacer les données actuelles par ${data.offres.length} candidature(s) et ${data.documents.length} document(s) ?`)) return;
+    // Les sauvegardes de la première version utilisaient « settings ».
+    await api('POST', 'import', data);
+    await chargerEtat();
+    applyTheme();
+    renderAll();
+    toast('Import terminé');
+  });
+});
+
+$('#btn-logout').addEventListener('click', async () => {
+  await fetch('api/deconnexion', { method: 'POST' });
+  location.href = 'login.html';
 });
 
 // ---------- Navigation et événements ----------
@@ -459,6 +625,7 @@ $('#input-import').addEventListener('change', async (e) => {
 function showView(name) {
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.id !== `view-${name}`; });
+  if (name === 'parametres') run(loadUsers);
 }
 
 document.addEventListener('click', (e) => {
@@ -481,20 +648,31 @@ document.addEventListener('click', (e) => {
   if (ds.delOffre) {
     const o = state.offres.find((x) => x.id === ds.delOffre);
     if (confirm(`Supprimer la candidature chez ${o.entreprise} ?`)) {
-      state.offres = state.offres.filter((x) => x.id !== o.id);
-      save(); renderAll();
+      run(async () => {
+        await api('DELETE', `offres/${o.id}`);
+        state.offres = state.offres.filter((x) => x.id !== o.id);
+        renderAll();
+      });
     }
   }
   if (ds.delDoc) {
     const d = state.documents.find((x) => x.id === ds.delDoc);
-    if (confirm(`Supprimer le document « ${d.nom} » ? Il sera retiré des candidatures associées.`)) {
-      state.documents = state.documents.filter((x) => x.id !== d.id);
-      state.offres.forEach((o) => {
-        if (o.cvId === d.id) o.cvId = '';
-        if (o.lettreId === d.id) o.lettreId = '';
+    if (confirm(`Supprimer le document « ${d.nom} » et son fichier ? Il sera retiré des candidatures associées.`)) {
+      run(async () => {
+        await api('DELETE', `documents/${d.id}`);
+        state.documents = state.documents.filter((x) => x.id !== d.id);
+        const liees = state.offres.filter((o) => o.cvId === d.id || o.lettreId === d.id);
+        for (const o of liees) {
+          if (o.cvId === d.id) o.cvId = '';
+          if (o.lettreId === d.id) o.lettreId = '';
+          await api('PUT', `offres/${o.id}`, o);
+        }
+        renderAll();
       });
-      save(); renderAll();
     }
+  }
+  if (ds.delUser && confirm(`Supprimer le compte « ${ds.username} » et toutes ses données ?`)) {
+    run(async () => renderUsers(await api('DELETE', `utilisateurs/${ds.delUser}`)));
   }
 
   if (t.classList.contains('stat') && !t.classList.contains('info')) {
@@ -541,5 +719,9 @@ function renderAll() {
 
 $('#filter-statut').innerHTML += STATUTS
   .map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
-applyTheme();
-renderAll();
+
+run(async () => {
+  await chargerEtat();
+  applyTheme();
+  renderAll();
+});

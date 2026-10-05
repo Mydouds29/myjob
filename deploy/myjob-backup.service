@@ -1,0 +1,9 @@
+[Unit]
+Description=Sauvegarde de MyJob (base et fichiers, Google Drive)
+
+[Service]
+Type=oneshot
+User=myjob
+Group=myjob
+EnvironmentFile=/etc/myjob/myjob.env
+ExecStart=/opt/myjob/deploy/backup.sh

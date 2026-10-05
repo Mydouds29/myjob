@@ -1,34 +1,41 @@
 # MyJob
 
-Site personnel pour suivre ses candidatures à des offres d'emploi, ainsi que les CV et lettres de motivation utilisés.
+Site personnel pour suivre ses candidatures à des offres d'emploi, avec les CV et lettres de motivation utilisés. Hébergé chez soi (conteneur LXC Proxmox), accessible depuis l'ordinateur et le smartphone, protégé par identifiant et mot de passe.
 
 ## Fonctionnalités
 
 - **Candidatures** : réponse à une offre ou candidature spontanée ; entreprise, poste, lieu, lien et référence de l'annonce, source, contact, contrat, télétravail, salaire, notes.
-- **Texte de l'offre et mots-clés** : collez l'annonce, l'analyse repère les compétences techniques IT, les qualités attendues et les mots les plus répétés (localement, sans service externe).
-- **Statuts** : À postuler, Postulé, Relancé, Entretien, Offre reçue, Refusé, Abandonné, avec compteurs cliquables, taux de réponse et candidatures des 7 derniers jours.
-- **Relances** : date proposée automatiquement (délai réglable), bandeau des relances à faire.
-- **Historique daté** des échanges par candidature (les changements de statut s'y ajoutent seuls).
+- **Texte de l'offre et mots-clés** : on colle l'annonce, l'analyse repère les compétences techniques IT, les qualités attendues et les mots les plus répétés, et indique celles de votre profil (✓). Le bouton « Préparer pour Claude » copie une demande prête à coller dans Claude (analyse + brouillon de lettre).
+- **Lettres Word** : modèles de lettre (texte saisi dans le site, ou fichier Word importé dont la mise en page est conservée) avec `{entreprise}`, `{poste}`, `{competences}`, `{date}`, `{nom}`, `{ville}` remplis automatiquement ; téléchargement en `.docx`.
+- **CV & lettres** : import des fichiers (Word, PDF, LibreOffice), associés à chaque candidature.
+- **Suivi** : statuts, historique daté des échanges, date de relance proposée (délai réglable), bandeau et e-mail quotidien des relances à faire, taux de réponse.
 - **Entreprises** : toutes les entreprises contactées avec la date du dernier échange.
-- **CV & lettres** : versions de CV et de lettres (liens), et modèles de lettre avec `{entreprise}`, `{poste}`, `{competences}` et `{date}` remplis automatiquement.
-- Recherche sur tous les champs (touche `/`), thème clair / sombre au choix, affichage adapté au smartphone.
-- **Export / import JSON** dans les paramètres.
+- Recherche sur tous les champs (touche `/`), thème clair / sombre, affichage adapté au smartphone.
+- **Comptes** : plusieurs comptes possibles, chacun avec ses données et ses réglages (e-mails, Gmail, profil).
+- **Sauvegarde** : export / import JSON, sauvegarde nocturne de la base et des fichiers, envoyée sur Google Drive.
 
-## Utilisation
+## Installation
 
-Aucune installation : ouvrir `index.html` dans un navigateur.
+Voir [docs/INSTALLATION.md](docs/INSTALLATION.md) (Debian 13, sans Docker, Caddy pour le HTTPS).
 
-Prochaine étape : un petit serveur à installer dans un LXC Proxmox (connexion par identifiant et mot de passe, base SQLite, fichiers de CV et lettres, sauvegarde nocturne sur Google Drive avec rclone).
+## Développement
 
-## Stockage des données
-
-Les données restent **dans le navigateur** (localStorage) : rien n'est envoyé sur un serveur. Pensez à utiliser **Exporter** régulièrement pour garder une sauvegarde, car vider les données du navigateur efface tout.
+```bash
+npm install
+npm run user -- create moi --admin     # crée un compte (demande le mot de passe)
+MYJOB_SECURE_COOKIE=false npm start     # http://127.0.0.1:3000
+```
 
 ## Structure
 
 ```
-index.html      page unique
-css/styles.css  styles (thème clair / sombre automatique)
-js/app.js       logique de l'application
-js/keywords.js  dictionnaire et analyse des mots-clés des offres
+server/
+  index.js          démarrage
+  app.js            socle : sécurité, sessions, chargement des modules
+  core/             configuration, base SQLite, comptes et sessions
+  modules/          une fonctionnalité par dossier (voir server/modules/README.md)
+  cli.js            gestion des comptes en ligne de commande
+public/             interface (HTML, CSS, JavaScript sans framework)
+deploy/             installation, service systemd, Caddy, sauvegarde
+docs/               documentation
 ```
