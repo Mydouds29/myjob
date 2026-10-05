@@ -793,11 +793,16 @@ $('#form-doc').addEventListener('submit', async (e) => {
 function renderSettings() {
   const form = $('#form-settings');
   const r = state.reglages;
-  ['theme', 'delaiRelance', 'nomComplet', 'ville', 'profil', 'emailDestinataire', 'smtpUser', 'smtpHost', 'smtpPort']
+  ['theme', 'delaiRelance', 'nomComplet', 'ville', 'profil', 'emailDestinataire', 'smtpUser', 'smtpHost', 'smtpPort', 'ftClientId']
     .forEach((k) => { if (document.activeElement !== form[k]) form[k].value = r[k] ?? ''; });
   form.alerteRelances.checked = r.alerteRelances;
   form.emailRelances.checked = r.emailRelances;
-  form.smtpPass.placeholder = r.smtpPassDefini ? '•••••••• (enregistré, laisser vide pour garder)' : '16 caractères, fourni par Google';
+  const garde = '•••••••• (enregistré, laisser vide pour garder)';
+  form.smtpPass.placeholder = r.smtpPassDefini ? garde : '16 caractères, fourni par Google';
+  form.claudeToken.placeholder = r.claudeTokenDefini ? garde
+    : state.analyseDisponible ? 'configuré sur le serveur' : 'sk-ant-…';
+  form.ftClientId.placeholder = !r.ftClientId && state.franceTravailConfigure ? 'configuré sur le serveur' : '';
+  form.ftClientSecret.placeholder = r.ftClientSecretDefini ? garde : '';
   $('#user-name').textContent = state.utilisateur.username || '';
   $('#card-users').hidden = !state.utilisateur.isAdmin;
   renderChoixProfil();
@@ -875,11 +880,16 @@ $('#form-settings').addEventListener('change', (e) => {
     smtpPass: form.smtpPass.value.replace(/\s+/g, ''),
     smtpHost: form.smtpHost.value.trim(),
     smtpPort: parseInt(form.smtpPort.value, 10) || 465,
+    claudeToken: form.claudeToken.value.replace(/\s+/g, ''),
+    ftClientId: form.ftClientId.value.trim(),
+    ftClientSecret: form.ftClientSecret.value.replace(/\s+/g, ''),
   };
   // Les enregistrements sont faits l'un après l'autre, dans l'ordre des modifications.
   saveQueue = saveQueue.then(() => run(async () => {
     state.reglages = await api('PUT', 'reglages', values);
-    if (values.smtpPass) form.smtpPass.value = '';
+    ['smtpPass', 'claudeToken', 'ftClientSecret'].forEach((k) => { if (values[k]) form[k].value = ''; });
+    state.analyseDisponible ||= state.reglages.claudeTokenDefini;
+    state.franceTravailConfigure ||= Boolean(state.reglages.ftClientId && state.reglages.ftClientSecretDefini);
     applyTheme();
     renderSettings();
     renderOffres();
@@ -890,6 +900,19 @@ $('#form-settings').addEventListener('change', (e) => {
 $('#btn-test-email').addEventListener('click', () => run(async () => {
   const r = await api('POST', 'rappels/test');
   toast(`E-mail de test envoyé à ${r.destinataire}`);
+}));
+
+// Les vérifications attendent la fin d'un éventuel enregistrement en cours.
+$('#btn-test-claude').addEventListener('click', () => run(async () => {
+  await saveQueue;
+  await api('POST', 'analyse/test');
+  toast('Claude : jeton reconnu.');
+}));
+
+$('#btn-test-ft').addEventListener('click', () => run(async () => {
+  await saveQueue;
+  await api('POST', 'francetravail/test');
+  toast('France Travail : identifiants acceptés.');
 }));
 
 $('#btn-mdp').addEventListener('click', () => run(async () => {

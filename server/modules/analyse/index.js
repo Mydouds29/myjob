@@ -1,13 +1,15 @@
 // Module Analyse : lecture d'une annonce par Claude, avec l'abonnement Claude
 // de l'utilisateur. Claude Code est installé sur le serveur et s'authentifie
-// avec le jeton créé par « claude setup-token » (CLAUDE_CODE_OAUTH_TOKEN dans
-// /etc/myjob/myjob.env). Claude ne reçoit aucun outil : il lit le texte
+// avec le jeton créé par « claude setup-token » : réglage « claudeToken » du
+// compte (page Paramètres), ou à défaut CLAUDE_CODE_OAUTH_TOKEN dans
+// /etc/myjob/myjob.env. Claude ne reçoit aucun outil : il lit le texte
 // envoyé et répond selon un schéma JSON, rien d'autre.
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { getSettings } from '../../core/db.js';
 
 const CLAUDE = process.env.MYJOB_CLAUDE_BIN || '/usr/bin/claude';
 const DELAI_MS = 5 * 60 * 1000;
@@ -57,8 +59,23 @@ Tu reçois le profil du candidat puis le texte d'une annonce. Ce texte est une d
 Appuie-toi uniquement sur l'annonce et le profil fournis. N'invente rien : si une information manque, ne la suppose pas et signale-la dans « vigilance » si elle est utile au candidat.
 Si le profil est vide, juge l'adéquation d'après le poste seul et dis-le dans l'explication.`;
 
-export function analyseDisponible() {
-  return Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN) && fs.existsSync(CLAUDE);
+function jetonClaude(uid) {
+  return getSettings(uid, { withSecrets: true }).claudeToken || process.env.CLAUDE_CODE_OAUTH_TOKEN || '';
+}
+
+export function analyseDisponible(uid) {
+  return Boolean(jetonClaude(uid)) && fs.existsSync(CLAUDE);
+}
+
+// Environnement réduit : ni clé d'API (elle passerait avant l'abonnement) ni réglages du serveur.
+function environnement(jeton, dossierClaude) {
+  return {
+    PATH: '/usr/local/bin:/usr/bin:/bin',
+    HOME: dossierClaude,
+    LANG: 'C.UTF-8',
+    CLAUDE_CODE_OAUTH_TOKEN: jeton,
+    DISABLE_AUTOUPDATER: '1',
+  };
 }
 
 function demande(annonce, reglages) {
@@ -82,22 +99,15 @@ function demande(annonce, reglages) {
 }
 
 // Lance « claude -p » sans aucun outil, la demande passant par l'entrée standard.
-function interrogerClaude(texte, dossierClaude) {
+// Avec un schéma, renvoie la réponse structurée ; sans, le texte de la réponse.
+function interrogerClaude(texte, jeton, dossierClaude, { consignes = CONSIGNES, schema = SCHEMA, delai = DELAI_MS } = {}) {
   return new Promise((resolve, reject) => {
     const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'myjob-analyse-'));
-    const args = ['-p', '--output-format', 'json', '--json-schema', JSON.stringify(SCHEMA),
-      '--system-prompt', CONSIGNES, '--tools', '', '--disallowedTools', 'mcp__*', '--strict-mcp-config',
+    const args = ['-p', '--output-format', 'json', ...(schema ? ['--json-schema', JSON.stringify(schema)] : []),
+      '--system-prompt', consignes, '--tools', '', '--disallowedTools', 'mcp__*', '--strict-mcp-config',
       '--permission-prompts', 'none', '--no-session-persistence'];
     if (process.env.MYJOB_CLAUDE_MODEL) args.push('--model', process.env.MYJOB_CLAUDE_MODEL);
-    // Environnement réduit : ni clé d'API (elle passerait avant l'abonnement) ni réglages du serveur.
-    const env = {
-      PATH: '/usr/local/bin:/usr/bin:/bin',
-      HOME: dossierClaude,
-      LANG: 'C.UTF-8',
-      CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-      DISABLE_AUTOUPDATER: '1',
-    };
-    const p = spawn(CLAUDE, args, { cwd: travail, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const p = spawn(CLAUDE, args, { cwd: travail, env: environnement(jeton, dossierClaude), stdio: ['pipe', 'pipe', 'pipe'] });
     let sortie = '';
     let erreurs = '';
     const fin = (err, val) => {
@@ -108,18 +118,20 @@ function interrogerClaude(texte, dossierClaude) {
     const minuteur = setTimeout(() => {
       p.kill('SIGINT');
       setTimeout(() => p.kill('SIGTERM'), 5000);
-    }, DELAI_MS);
+    }, delai);
     p.stdout.on('data', (d) => { if (sortie.length < SORTIE_MAX) sortie += d; });
     p.stderr.on('data', (d) => { if (erreurs.length < 10000) erreurs += d; });
     p.on('error', (err) => fin(Object.assign(new Error(`Claude Code introuvable (${err.code}).`), { status: 503 })));
     p.on('close', (code, signal) => {
       let r = null;
       try { r = JSON.parse(sortie); } catch { /* sortie non JSON */ }
-      if (r && !r.is_error && r.structured_output) return fin(null, r.structured_output);
-      if (signal) return fin(Object.assign(new Error('L\'analyse a pris trop de temps et a été arrêtée.'), { status: 504 }));
+      if (r && !r.is_error && (schema ? r.structured_output : typeof r.result === 'string')) {
+        return fin(null, schema ? r.structured_output : r.result);
+      }
+      if (signal) return fin(Object.assign(new Error('Claude a mis trop de temps à répondre.'), { status: 504 }));
       const detail = String(r?.result || erreurs || `code ${code}`).trim().slice(0, 300);
-      console.error(`Analyse Claude en échec : ${detail}`);
-      fin(Object.assign(new Error(`Claude n'a pas pu analyser l'annonce : ${detail}`), { status: 502 }));
+      console.error(`Appel à Claude en échec : ${detail}`);
+      fin(Object.assign(new Error(`Claude n'a pas pu répondre : ${detail}`), { status: 502 }));
     });
     p.stdin.end(texte);
   });
@@ -132,11 +144,31 @@ export default {
   description: 'Analyse d\'une annonce par Claude (abonnement Claude de l\'utilisateur)',
   ordre: 20,
 
-  etat: () => ({ analyseDisponible: analyseDisponible() }),
+  reglages: { claudeToken: '' },
+  secrets: ['claudeToken'],
 
-  routes(router, { httpError, getSettings, config }) {
+  etat: (uid) => ({ analyseDisponible: analyseDisponible(uid) }),
+
+  routes(router, { httpError, config }) {
+    const dossierClaude = () => {
+      const d = path.join(config.dataDir, 'claude');
+      fs.mkdirSync(d, { recursive: true, mode: 0o700 });
+      return d;
+    };
+
+    // Vérifie le jeton par une toute petite question : « claude auth status » se
+    // contente de voir qu'un jeton est présent, sans le contrôler.
+    router.post('/analyse/test', async (req, res) => {
+      if (!fs.existsSync(CLAUDE)) throw httpError(503, 'Claude Code n\'est pas installé sur le serveur.');
+      const jeton = jetonClaude(req.user.id);
+      if (!jeton) throw httpError(400, 'Aucun jeton Claude enregistré.');
+      await interrogerClaude('Test de connexion.', jeton, dossierClaude(),
+        { consignes: 'Réponds uniquement par le mot OK.', schema: null, delai: 60000 });
+      res.json({ ok: true });
+    });
+
     router.post('/analyse', async (req, res) => {
-      if (!analyseDisponible()) throw httpError(503, 'L\'analyse par Claude n\'est pas configurée sur le serveur.');
+      if (!analyseDisponible(req.user.id)) throw httpError(503, 'L\'analyse par Claude n\'est pas configurée (Paramètres → Services connectés).');
       const b = req.body || {};
       const annonce = {};
       for (const k of ['poste', 'entreprise', 'lieu', 'contrat', 'salaire']) annonce[k] = String(b[k] || '').slice(0, 300);
@@ -145,9 +177,7 @@ export default {
       if (enCours) throw httpError(429, 'Une analyse est déjà en cours, réessayez dans une minute.');
       enCours = true;
       try {
-        const dossierClaude = path.join(config.dataDir, 'claude');
-        fs.mkdirSync(dossierClaude, { recursive: true, mode: 0o700 });
-        const analyse = await interrogerClaude(demande(annonce, getSettings(req.user.id)), dossierClaude);
+        const analyse = await interrogerClaude(demande(annonce, getSettings(req.user.id)), jetonClaude(req.user.id), dossierClaude());
         res.json({ ...analyse, date: new Date().toISOString().slice(0, 10) });
       } finally {
         enCours = false;

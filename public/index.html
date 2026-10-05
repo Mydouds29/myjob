@@ -154,6 +154,20 @@
         </div>
 
         <div class="card">
+          <h2>Services connectés</h2>
+          <h3>Claude : analyse des annonces</h3>
+          <p class="hint">Jeton créé avec <code>claude setup-token</code> sur un ordinateur où Claude Code est installé
+            (abonnement Claude Pro ou Max, valable un an). Les analyses comptent dans les limites de l'abonnement.</p>
+          <label>Jeton Claude<input name="claudeToken" type="password" autocomplete="new-password"></label>
+          <button type="button" id="btn-test-claude" class="btn">Vérifier</button>
+          <h3>France Travail : offres d'emploi</h3>
+          <p class="hint">Application créée sur francetravail.io avec l'API « Offres d'emploi ».</p>
+          <label>Identifiant client<input name="ftClientId" autocomplete="off"></label>
+          <label>Clé secrète<input name="ftClientSecret" type="password" autocomplete="new-password"></label>
+          <button type="button" id="btn-test-ft" class="btn">Vérifier</button>
+        </div>
+
+        <div class="card">
           <h2>Mot de passe</h2>
           <label>Mot de passe actuel<input id="mdp-actuel" type="password" autocomplete="current-password"></label>
           <label>Nouveau mot de passe (10 caractères minimum)<input id="mdp-nouveau" type="password" autocomplete="new-password"></label>

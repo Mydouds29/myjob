@@ -8,6 +8,7 @@ Chaque dossier de `server/modules/` est un module chargé automatiquement au dé
 | `candidatures` | candidatures, statuts, relances, historique |
 | `annonces` | remplissage d'une candidature depuis le lien de l'annonce |
 | `analyse` | analyse d'une annonce par Claude (abonnement Claude, via Claude Code) |
+| `francetravail` | accès à l'API Offres d'emploi de France Travail (identifiants de l'application) |
 | `documents` | CV, lettres, modèles et leurs fichiers |
 | `lettres` | génération des lettres Word depuis un modèle |
 | `rappels` | e-mail quotidien des relances à faire |

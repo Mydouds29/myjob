@@ -118,7 +118,7 @@ Le bouton **Analyser avec Claude** (texte de l'offre) fait lire l'annonce par Cl
 
 2. **Créer un jeton** sur un ordinateur où Claude Code est installé, avec le compte de l'abonnement : `claude setup-token`. Le jeton (valable un an) s'affiche une seule fois.
 
-3. **Le donner à MyJob**, sans qu'il apparaisse à l'écran :
+3. **Le donner à MyJob** : page **Paramètres → Services connectés**, champ « Jeton Claude », puis « Vérifier ». Il est enregistré avec les réglages du compte et n'est jamais renvoyé au navigateur. Autre possibilité, pour tous les comptes du serveur, dans le conteneur et sans qu'il apparaisse à l'écran :
 
    ```bash
    read -rsp "Jeton : " T && echo && sed -i '/^CLAUDE_CODE_OAUTH_TOKEN=/d' /etc/myjob/myjob.env \
@@ -126,6 +126,11 @@ Le bouton **Analyser avec Claude** (texte de l'offre) fait lire l'annonce par Cl
    ```
 
 Le bouton apparaît dans le formulaire dès que le jeton est en place. Pour changer de modèle, ajouter par exemple `MYJOB_CLAUDE_MODEL=sonnet` dans `/etc/myjob/myjob.env`.
+
+## 8. Offres d'emploi France Travail (facultatif)
+
+1. Créer un compte sur <https://francetravail.io>, puis une application (adresse du site : par exemple celle du dépôt GitHub) avec l'API **« Offres d'emploi »**.
+2. Recopier l'identifiant client et la clé secrète dans **Paramètres → Services connectés**, puis « Vérifier ». À défaut, `MYJOB_FT_CLIENT_ID` et `MYJOB_FT_CLIENT_SECRET` dans `/etc/myjob/myjob.env` valent pour tous les comptes.
 
 ## Comptes en ligne de commande
 
