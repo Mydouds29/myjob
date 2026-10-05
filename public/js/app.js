@@ -979,7 +979,10 @@ function envoyerAMyJob() {
   const meta = (n) => document.querySelector(`meta[property="${n}"],meta[name="${n}"]`)?.content || '';
   const jsonld = [...document.querySelectorAll('script[type="application/ld+json"]')]
     .map((s) => s.textContent).filter((t) => t.includes('JobPosting'));
-  const texte = lire(['#jobDescriptionText', '.jobs-description__content', '#job-details', 'main', 'article', 'body']);
+  // Repères relevés sur la vraie page de résultats Indeed (octobre 2026) ;
+  // #jobDescriptionText est celui de l'ancienne mise en page.
+  const texte = lire(['.react-native-html-content', '#jobDescriptionText',
+    '.jobs-description__content', '#job-details', 'main', 'article', 'body']);
   const html = `<title>${echapper(document.title)}</title>`
     + ['og:title', 'og:description', 'og:site_name', 'description']
       .map((n) => `<meta property="${n}" content="${echapper(meta(n))}">`).join('')
@@ -990,12 +993,11 @@ function envoyerAMyJob() {
     html: html.slice(0, 300000),
     selection: String(getSelection() || '').trim().slice(0, 30000),
     champs: {
-      poste: lire(['[data-testid="jobsearch-JobInfoHeader-title"]', '.jobsearch-JobInfoHeader-title',
+      poste: lire(['[data-testid="vj-job-title"]',
         '.job-details-jobs-unified-top-card__job-title', '.top-card-layout__title']),
-      entreprise: lire(['[data-testid="inlineHeader-companyName"]', '[data-company-name="true"]',
+      entreprise: lire(['[data-testid="company-info-metadata"] > div > :first-child',
         '.job-details-jobs-unified-top-card__company-name', '.topcard__org-name-link']),
-      lieu: lire(['[data-testid="inlineHeader-companyLocation"]', '[data-testid="job-location"]',
-        '[data-testid="jobsearch-JobInfoHeader-companyLocation"]']),
+      lieu: lire(['[data-testid="company-info-metadata"] > div > :nth-child(2)']),
     },
   };
   const adresse = `${ORIGINE}/#annonce=${encodeURIComponent(JSON.stringify(donnees))}`;
