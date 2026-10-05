@@ -43,6 +43,28 @@ Le site est alors accessible sur `https://myjob.mydouds.fr`, depuis l'ordinateur
 
 > Si les ports 80/443 sont déjà utilisés par un autre service, il faudra un seul reverse proxy en frontal qui redirige `myjob.mydouds.fr` vers `IP-du-conteneur:3000` ; dans ce cas, mettre `MYJOB_HOST=0.0.0.0` dans `/etc/myjob/myjob.env`.
 
+### Isoler le conteneur (recommandé dès qu'il est exposé sur internet)
+
+Avec le pare-feu de Proxmox, n'autoriser que le site en entrée et empêcher le conteneur de joindre le réseau local : même en cas de faille, il ne pourrait pas atteindre les autres machines. Exemple pour le conteneur 111 (`/etc/pve/firewall/111.fw`), le réseau local étant `192.168.1.0/24` et la box `192.168.1.1` :
+
+```
+[OPTIONS]
+enable: 1
+policy_in: DROP
+policy_out: DROP
+
+[RULES]
+IN ACCEPT -p tcp -dport 80,443
+IN ACCEPT -source 192.168.1.0/24 -p tcp -dport 22
+OUT ACCEPT -dest 192.168.1.1 -p udp -dport 53
+OUT ACCEPT -dest 192.168.1.1 -p tcp -dport 53
+OUT DROP -dest 192.168.1.0/24
+OUT ACCEPT -p tcp -dport 80,443
+OUT ACCEPT -p tcp -dport 465,587
+```
+
+Le pare-feu des invités ne fonctionne que si celui du centre de données est activé (`enable: 1` dans `/etc/pve/firewall/cluster.fw`), ce qui active aussi celui de l'hôte : le désactiver d'abord (`enable: 0` dans `/etc/pve/nodes/<nœud>/host.fw`) si l'on ne veut pas le configurer, et garder une session SSH ouverte sur l'hôte pendant le changement. Dans le conteneur, installer `unattended-upgrades` pour les mises à jour de sécurité et n'autoriser SSH que par clé.
+
 ## 4. Réglages dans le site
 
 Tout le reste se règle dans le site. L'onglet **Mon profil** contient le nom, la ville et les compétences (utilisés pour les lettres et l'analyse des offres), avec une liste de compétences à cocher. L'onglet **Paramètres** contient les réglages de l'application :
