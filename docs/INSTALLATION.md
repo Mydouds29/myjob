@@ -56,7 +56,7 @@ La configuration technique (port, heure des rappels, durée de connexion…) est
 
 ## 5. Sauvegarde sur Google Drive
 
-Une sauvegarde (base + fichiers) est faite chaque nuit à 3 h dans `/var/lib/myjob/sauvegardes/` (14 jours conservés). Pour l'envoyer aussi sur Google Drive :
+Une sauvegarde (base + fichiers) est faite chaque nuit à 3 h dans `/var/lib/myjob/sauvegardes/` (les 7 dernières archives sont gardées ; aucune n'est créée si rien n'a changé depuis la précédente). Pour l'envoyer aussi sur Google Drive :
 
 1. Sur votre PC Windows, installer rclone (<https://rclone.org/downloads/>) : il servira uniquement à autoriser l'accès à Google Drive.
 2. Dans le conteneur, en root :
