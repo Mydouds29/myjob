@@ -113,6 +113,38 @@ export function contratDepuisTexte(t) {
   return '';
 }
 
+const RE_EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/;
+const RE_TELEPHONE = /(?:\+33\s?|0)[1-9](?:[\s.-]?\d{2}){4}/;
+// Titre d'un bloc de contact : « Personne à contacter », « Contact RH : »…
+const RE_TITRE_CONTACT = /^(?:personnes? (?:à|a) contacter|interlocut(?:eur|rice)s?|(?:votre |vos )?contacts?(?: rh| recrutement)?|r(?:é|e)f(?:é|e)rent(?:e)? recrutement)(?![\wÀ-ÿ])\s*:?\s*(.*)$/i;
+// Début d'une autre rubrique : fin du bloc de contact.
+const RE_AUTRE_RUBRIQUE = /^(?:(?:é|e)tablissement|adresse|lieu|poste|profil|missions?|r(?:é|e)mun(?:é|e)ration|salaire|date|horaires?|avantages?|descriptif|contrat|candidature)\b/i;
+
+// Personne à contacter, d'après un bloc « Personne à contacter » / « Contact »
+// du texte de l'annonce ; à défaut, la première adresse e-mail ou le premier
+// numéro de téléphone cités. Rendu sous la forme « Nom, e-mail, téléphone ».
+export function contactDepuisTexte(t) {
+  const lignes = String(t || '').split('\n').map((l) => l.trim());
+  for (let i = 0; i < lignes.length; i++) {
+    const m = lignes[i].match(RE_TITRE_CONTACT);
+    if (!m) continue;
+    const morceaux = m[1] ? [m[1]] : [];
+    for (let j = i + 1; j < lignes.length && morceaux.length < 3; j++) {
+      const l = lignes[j];
+      if (!l) continue;
+      if (l.length > 80 || RE_AUTRE_RUBRIQUE.test(l)) break;
+      morceaux.push(l);
+    }
+    const contact = morceaux.join(', ').replace(/\s*[-–]\s*$/, '').trim();
+    // Un vrai contact a un nom, un e-mail ou un téléphone, pas une phrase.
+    if (contact && contact.length <= 200 && (RE_EMAIL.test(contact) || RE_TELEPHONE.test(contact) || /^(?:m\.|mme|mlle|madame|monsieur)\s/i.test(contact))) {
+      return contact;
+    }
+  }
+  const texte = lignes.join('\n');
+  return texte.match(RE_EMAIL)?.[0] || texte.match(RE_TELEPHONE)?.[0] || '';
+}
+
 export function teletravailDepuisTexte(t) {
   if (/t(é|e)l(é|e)travail (complet|total|100 ?%)|full remote|100 ?% (à|a) distance/i.test(t)) return 'Complet';
   if (/t(é|e)l(é|e)travail (partiel|possible|occasionnel|autoris(é|e)|\d)|\d ?jours? de t(é|e)l(é|e)travail|hybride|remote partiel/i.test(t)) return 'Partiel';
@@ -166,6 +198,7 @@ export function extraireAnnonce(html, url) {
   const tout = `${r.poste} ${r.texteOffre}`;
   r.contrat ||= contratDepuisTexte(tout);
   r.teletravail ||= teletravailDepuisTexte(tout);
+  r.contact = contactDepuisTexte(r.texteOffre);
   r.source = sourceDepuisUrl(url) || meta(html, 'og:site_name');
   r.lien = lienCanonique(url);
   Object.keys(r).forEach((k) => { if (r[k] === '') delete r[k]; });

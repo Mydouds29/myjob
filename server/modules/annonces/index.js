@@ -4,7 +4,7 @@
 // affiche (utile pour les sites qui bloquent la lecture automatique).
 
 import { telechargerPage } from './telechargement.js';
-import { extraireAnnonce, contratDepuisTexte, teletravailDepuisTexte } from './extraction.js';
+import { extraireAnnonce, contratDepuisTexte, teletravailDepuisTexte, contactDepuisTexte } from './extraction.js';
 
 const TAILLE_MAX_PAGE = 1024 * 1024;
 
@@ -57,6 +57,7 @@ export default {
         a.texteOffre = selection;
         a.contrat ||= contratDepuisTexte(selection) || undefined;
         a.teletravail ||= teletravailDepuisTexte(selection) || undefined;
+        a.contact ||= contactDepuisTexte(selection) || undefined;
       }
       Object.keys(a).forEach((k) => { if (a[k] === '' || a[k] === undefined) delete a[k]; });
       res.json(a);

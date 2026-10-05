@@ -528,7 +528,7 @@ $('#form-offre').addEventListener('change', (e) => {
 // Remplit les champs encore vides du formulaire avec les informations de l'annonce.
 function remplirDepuisAnnonce(form, a) {
   const remplis = [];
-  ['entreprise', 'poste', 'lieu', 'reference', 'source', 'contrat', 'teletravail', 'salaire', 'texteOffre'].forEach((k) => {
+  ['entreprise', 'poste', 'lieu', 'reference', 'source', 'contact', 'contrat', 'teletravail', 'salaire', 'texteOffre'].forEach((k) => {
     if (a[k] && !form[k].value.trim()) {
       if (form[k].tagName === 'SELECT' && ![...form[k].options].some((o) => o.value === a[k])) return;
       form[k].value = a[k];
