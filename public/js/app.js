@@ -571,8 +571,11 @@ function renderAnalyseIA(a) {
   if (!a) { el.innerHTML = ''; return; }
   const puces = (titre, items) => (items?.length
     ? `<h4>${titre}</h4><ul>${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '');
-  const competences = (a.competences || []).map((c) => `<span class="chip${c.importance === 'indispensable' ? ' tech' : ''}${c.dansLeProfil ? ' have' : ''}"
-    title="${esc(c.importance)}">${esc(c.intitule)}</span>`).join('');
+  // Une compétence absente du profil se clique pour l'y ajouter (« + »).
+  const competences = (a.competences || []).map((c, i) => (c.dansLeProfil
+    ? `<span class="chip${c.importance === 'indispensable' ? ' tech' : ''} have" title="${esc(c.importance)}">${esc(c.intitule)}</span>`
+    : `<button type="button" class="chip ajout${c.importance === 'indispensable' ? ' tech' : ''}" data-ajout-competence="${i}"
+      title="${esc(c.importance)} — Je l'ai déjà fait : l'ajouter à mon profil">${esc(c.intitule)}</button>`)).join('');
   const note = Math.min(5, Math.max(0, Math.round(Number(a.adequation?.note) || 0)));
   el.innerHTML = `
     <h4>Analyse de Claude${a.date ? ` du ${fmtDate(a.date)}` : ''}</h4>
@@ -580,12 +583,33 @@ function renderAnalyseIA(a) {
     <p class="note-ia">Adéquation avec votre profil : ${'★'.repeat(note)}${'☆'.repeat(5 - note)}</p>
     <p>${esc(a.adequation?.explication)}</p>
     ${puces('Missions principales', a.missions)}
-    ${competences ? `<h4>Compétences demandées (en couleur : indispensables, ✓ : dans votre profil)</h4><div>${competences}</div>` : ''}
+    ${competences ? `<h4>Compétences demandées (en couleur : indispensables, ✓ : dans votre profil, + : cliquez si vous l'avez déjà fait)</h4><div>${competences}</div>` : ''}
     ${puces('Vos atouts', a.atouts)}
     ${puces('Ce qui manque, et comment le compenser', a.manques)}
     ${puces('À mettre en avant', a.aMettreEnAvant)}
     ${puces('Points de vigilance', a.vigilance)}`;
 }
+
+// « Je l'ai déjà fait » : la compétence part dans le profil et passe en ✓.
+$('#analyse-ia').addEventListener('click', (e) => {
+  const i = e.target.closest('[data-ajout-competence]')?.dataset.ajoutCompetence;
+  if (i === undefined) return;
+  const c = editing.analyseIA?.competences?.[i];
+  if (!c) return;
+  run(async () => {
+    const profil = state.reglages.profil || '';
+    const deja = profil.split('\n').some((l) => l.trim().toLowerCase() === c.intitule.toLowerCase());
+    if (!deja) {
+      state.reglages = await api('PUT', 'reglages', { profil: [profil.trim(), c.intitule].filter(Boolean).join('\n') });
+      renderProfil();
+    }
+    c.dansLeProfil = true;
+    renderAnalyseIA(editing.analyseIA);
+    const prev = state.offres.find((o) => o.id === editing.id);
+    if (prev) Object.assign(prev, normaliser(await api('PUT', `offres/${prev.id}`, { ...prev, analyseIA: editing.analyseIA })));
+    toast(deja ? 'Déjà dans votre profil.' : `« ${c.intitule} » ajouté à votre profil.`);
+  });
+});
 
 $('#btn-analyse-ia').addEventListener('click', (e) => run(async () => {
   const form = $('#form-offre');
