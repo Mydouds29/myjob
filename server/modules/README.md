@@ -6,6 +6,7 @@ Chaque dossier de `server/modules/` est un module chargé automatiquement au dé
 |---|---|
 | `comptes` | connexion, réglages du compte, mot de passe, gestion des comptes |
 | `candidatures` | candidatures, statuts, relances, historique |
+| `annuaire` | annuaire des entreprises à démarcher (API Recherche d'entreprises de l'État) et suivi des contacts |
 | `annonces` | remplissage d'une candidature depuis le lien de l'annonce |
 | `analyse` | analyse d'une annonce par Claude (abonnement Claude, via Claude Code) |
 | `francetravail` | accès à l'API Offres d'emploi de France Travail (identifiants de l'application) |

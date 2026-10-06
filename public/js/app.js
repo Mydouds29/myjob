@@ -83,6 +83,7 @@ function normaliser(o) {
 async function chargerEtat() {
   state = await api('GET', 'etat');
   state.offres.forEach(normaliser);
+  state.annuaire ??= [];
 }
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -832,6 +833,271 @@ function renderEntreprises() {
   $('#entreprises-empty').hidden = rows.length > 0;
 }
 
+// ---------- Annuaire des entreprises à démarcher ----------
+
+const STATUTS_ANNUAIRE = [
+  { id: 'a_etudier', label: 'À étudier' },
+  { id: 'a_contacter', label: 'À contacter' },
+  { id: 'contacte', label: 'Contactée' },
+  { id: 'pas_interesse', label: 'Pas intéressée' },
+  { id: 'ecarte', label: 'Écartée' },
+];
+const statutAnnLabel = (id) => STATUTS_ANNUAIRE.find((s) => s.id === id)?.label ?? id;
+const CIBLES_ANNUAIRE = { informatique: 'Informatique', grands: 'Grand employeur', manuel: 'Ajoutée à la main' };
+const ficheOfficielle = (e) => (e.siret ? `https://annuaire-entreprises.data.gouv.fr/etablissement/${e.siret}` : '');
+
+// Nom simplifié pour rapprocher l'annuaire des candidatures (« CAPGEMINI
+// TECHNOLOGY SERVICES » et « Capgemini »).
+const cleNom = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  .replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+
+function candidaturesDe(e) {
+  const noms = [e.nom, e.enseigne].map(cleNom).filter(Boolean);
+  return state.offres.filter((o) => {
+    const k = cleNom(o.entreprise);
+    return k && noms.some((n) => n === k || n.startsWith(`${k} `) || k.startsWith(`${n} `));
+  });
+}
+
+function dernierContact(e, offres) {
+  return [...(e.historique || []).map((h) => h.date), ...offres.map((o) => o.dateCandidature)]
+    .filter(Boolean).sort().at(-1) || '';
+}
+
+function renderZone() {
+  const form = $('#form-zone');
+  if (document.activeElement !== form.annuaireVille) form.annuaireVille.value = state.reglages.annuaireVille || state.reglages.ville || '';
+  if (document.activeElement !== form.annuaireRayon) form.annuaireRayon.value = state.reglages.annuaireRayon || 20;
+}
+
+function renderAnnuaire() {
+  const q = cleNom($('#ann-search').value);
+  const statut = $('#ann-statut').value;
+  const cible = $('#ann-cible').value;
+  const tri = $('#ann-tri').value;
+  const rows = state.annuaire.map((e) => {
+    const offres = candidaturesDe(e);
+    return { e, offres, dernier: dernierContact(e, offres) };
+  }).filter(({ e }) => (statut === 'tous' ? true : statut ? e.statut === statut : e.statut !== 'ecarte')
+    && (!cible || (e.cible || 'manuel') === cible)
+    && (!q || cleNom([e.nom, e.enseigne, e.activiteLibelle, e.commune, e.contact, e.notes].join(' ')).includes(q)));
+  const taille = (e) => (/^\d\d$/.test(e.effectif || '') ? Number(e.effectif) : -1);
+  rows.sort((a, b) => ({
+    distance: () => (a.e.distance ?? 999) - (b.e.distance ?? 999),
+    taille: () => taille(b.e) - taille(a.e),
+    nom: () => a.e.nom.localeCompare(b.e.nom, 'fr'),
+    contact: () => b.dernier.localeCompare(a.dernier),
+  })[tri]() || a.e.nom.localeCompare(b.e.nom, 'fr'));
+
+  $('#annuaire-body').innerHTML = rows.map(({ e, offres, dernier }) => {
+    const fiche = ficheOfficielle(e);
+    const suivi = [
+      dernier ? `dernier contact le ${fmtDate(dernier)}` : '',
+      offres.length ? `${offres.length} candidature${offres.length > 1 ? 's' : ''}` : '',
+    ].filter(Boolean).join(' · ');
+    return `<tr>
+      <td class="clickable" data-edit-ann="${esc(e.id)}"><strong>${esc(e.nom)}</strong>${e.enseigne ? `<span class="tag">${esc(e.enseigne)}</span>` : ''}
+        <div class="sub">${esc(e.activiteLibelle || '')}</div></td>
+      <td data-label="Lieu">${esc(e.commune || '')}${e.distance != null ? `<div class="sub">${String(e.distance).replace('.', ',')} km</div>` : ''}</td>
+      <td data-label="Taille" class="sub">${esc(e.effectifLibelle || '')}</td>
+      <td><span class="badge a-${esc(e.statut)}">${esc(statutAnnLabel(e.statut))}</span>${suivi ? `<div class="sub">${suivi}</div>` : ''}</td>
+      <td class="actions">
+        ${fiche ? `<a class="btn small" href="${esc(fiche)}" target="_blank" rel="noopener" title="Fiche dans l'annuaire officiel des entreprises">Fiche</a>` : ''}
+        ${e.statut === 'ecarte' ? '' : `<button class="btn small" data-ecarter-ann="${esc(e.id)}" title="Ne plus l'afficher (elle ne reviendra pas aux prochaines recherches)">Écarter</button>`}
+      </td>
+    </tr>`;
+  }).join('');
+  $('#annuaire-empty').hidden = rows.length > 0;
+  $('#annuaire-empty').textContent = state.annuaire.length
+    ? 'Aucune entreprise ne correspond à ces filtres.'
+    : 'L\'annuaire est vide : lancez une recherche ci-dessus ou ajoutez une entreprise à la main.';
+}
+
+async function chercherAnnuaire(cible) {
+  const boutons = document.querySelectorAll('[data-chercher]');
+  const attente = $('#annuaire-attente');
+  boutons.forEach((b) => { b.disabled = true; });
+  attente.hidden = false;
+  attente.textContent = 'Recherche dans l\'annuaire officiel des entreprises… (jusqu\'à une minute)';
+  try {
+    await saveQueue; // la ville et le rayon viennent peut-être d'être modifiés
+    const r = await run(() => api('POST', 'annuaire/recherche', { cible }));
+    if (!r) return;
+    state.annuaire = r.annuaire;
+    $('#ann-cible').value = cible;
+    $('#ann-statut').value = '';
+    renderAnnuaire();
+    toast(`${r.trouvees} trouvée${r.trouvees > 1 ? 's' : ''} à moins de ${r.rayon} km de ${r.ville}, dont ${r.ajoutees} nouvelle${r.ajoutees > 1 ? 's' : ''}`);
+  } finally {
+    attente.hidden = true;
+    boutons.forEach((b) => { b.disabled = false; });
+  }
+}
+
+let editingAnn = null; // copie de travail de l'entreprise ouverte
+
+function openAnn(id) {
+  const form = $('#form-ann');
+  const existing = state.annuaire.find((x) => x.id === id);
+  editingAnn = existing
+    ? structuredClone(existing)
+    : { id: uid(), statut: 'a_contacter', source: 'manuel', cible: 'manuel', ajoutee: today(), historique: [] };
+  editingAnn.historique ??= [];
+  form.reset();
+  $('#dlg-ann-title').textContent = existing ? existing.nom : 'Nouvelle entreprise';
+  form.statut.innerHTML = STATUTS_ANNUAIRE.map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
+  ['nom', 'statut', 'activiteLibelle', 'commune', 'adresse', 'site', 'contact', 'telephone', 'email', 'notes']
+    .forEach((k) => { form[k].value = editingAnn[k] ?? ''; });
+  const e = editingAnn;
+  const fiche = ficheOfficielle(e);
+  $('#ann-officiel').hidden = !fiche;
+  $('#ann-officiel').innerHTML = fiche
+    ? `${esc(CIBLES_ANNUAIRE[e.cible] || '')} · ${esc(e.effectifLibelle || 'effectif inconnu')} sur place`
+      + `${e.distance != null ? ` · à ${String(e.distance).replace('.', ',')} km` : ''} · SIRET ${esc(e.siret)}`
+      + ` · <a href="${esc(fiche)}" target="_blank" rel="noopener">fiche officielle</a>`
+      + ` · <a href="https://www.google.com/search?q=${encodeURIComponent(`${e.nom} ${e.commune || ''}`)}" target="_blank" rel="noopener">chercher son site</a>`
+    : '';
+  const offres = candidaturesDe(e);
+  $('#ann-candidatures').innerHTML = offres.length
+    ? `Candidatures : ${offres.map((o) => `<a href="#" data-edit-offre="${o.id}">${esc(o.poste || 'spontanée')} (${fmtDate(o.dateCandidature)})</a>`).join(', ')}`
+    : '';
+  $('#btn-ann-suppr').hidden = !existing;
+  $('#ann-recherche-nom').hidden = Boolean(existing);
+  $('#ann-q').value = '';
+  $('#ann-q-resultats').innerHTML = '';
+  resultatsOfficiels = [];
+  $('#ann-histo-date').value = today();
+  $('#ann-histo-texte').value = '';
+  renderAnnHistorique();
+  $('#dlg-ann').showModal();
+}
+
+// Ajout à la main : recherche par nom dans l'annuaire officiel.
+let resultatsOfficiels = [];
+
+async function chercherOfficiel() {
+  const q = $('#ann-q').value.trim();
+  if (q.length < 2) return;
+  const liste = $('#ann-q-resultats');
+  liste.innerHTML = '<li class="sub">Recherche…</li>';
+  resultatsOfficiels = (await run(() => api('GET', `annuaire/officiel?q=${encodeURIComponent(q)}`))) || [];
+  liste.innerHTML = resultatsOfficiels.length
+    ? resultatsOfficiels.map((f, i) => `<li><button type="button" data-choisir-officiel="${i}">
+        <strong>${esc(f.nom)}</strong>${f.enseigne ? ` · ${esc(f.enseigne)}` : ''}
+        <span class="sub">${esc(f.adresse)} · ${esc(f.effectifLibelle)} · ${esc(f.activiteLibelle)}</span></button></li>`).join('')
+    : '<li class="sub">Rien trouvé près de chez vous : remplissez la fiche à la main.</li>';
+}
+
+function choisirOfficiel(i) {
+  const f = resultatsOfficiels[i];
+  const deja = state.annuaire.find((x) => x.id === f.id);
+  if (deja) {
+    toast(`${deja.nom} est déjà dans l'annuaire`);
+    openAnn(deja.id);
+    return;
+  }
+  Object.assign(editingAnn, f, { cible: 'manuel', source: 'manuel' });
+  const form = $('#form-ann');
+  ['nom', 'activiteLibelle', 'commune', 'adresse'].forEach((k) => { form[k].value = editingAnn[k] ?? ''; });
+  $('#ann-q-resultats').innerHTML = '';
+  $('#ann-officiel').hidden = false;
+  $('#ann-officiel').textContent = `${f.effectifLibelle} sur place · à ${String(f.distance).replace('.', ',')} km · SIRET ${f.siret}`;
+}
+
+$('#btn-ann-q').addEventListener('click', chercherOfficiel);
+$('#ann-q').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); chercherOfficiel(); }
+});
+
+function renderAnnHistorique() {
+  const items = [...editingAnn.historique].reverse().sort((a, b) => b.date.localeCompare(a.date));
+  $('#ann-historique').innerHTML = items.map((h) => `
+    <li><time>${fmtDate(h.date)}</time><span>${esc(h.texte)}</span>
+      <button type="button" data-del-ann-histo="${h.id}" title="Supprimer">✕</button></li>`).join('');
+}
+
+$('#btn-ann-histo-add').addEventListener('click', () => {
+  const texte = $('#ann-histo-texte').value.trim();
+  if (!texte) return;
+  editingAnn.historique.push({ id: uid(), date: $('#ann-histo-date').value || today(), texte });
+  // Un premier échange fait passer l'entreprise en « Contactée ».
+  const form = $('#form-ann');
+  if (['a_etudier', 'a_contacter'].includes(form.statut.value)) form.statut.value = 'contacte';
+  $('#ann-histo-texte').value = '';
+  renderAnnHistorique();
+});
+$('#ann-histo-texte').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); $('#btn-ann-histo-add').click(); }
+});
+
+async function enregistrerAnn(e) {
+  const saved = await run(() => api('PUT', `annuaire/${e.id}`, e));
+  if (!saved) return null;
+  const i = state.annuaire.findIndex((x) => x.id === saved.id);
+  if (i >= 0) state.annuaire[i] = saved; else state.annuaire.push(saved);
+  renderAnnuaire();
+  return saved;
+}
+
+$('#form-ann').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const data = Object.fromEntries(new FormData(ev.target));
+  Object.keys(data).forEach((k) => { data[k] = data[k].trim(); });
+  if (await enregistrerAnn({ ...editingAnn, ...data, id: editingAnn.id })) {
+    $('#dlg-ann').close();
+    toast('Entreprise enregistrée');
+  }
+});
+
+$('#btn-ann-suppr').addEventListener('click', () => {
+  const e = editingAnn;
+  const msg = e.source === 'annuaire'
+    ? `Supprimer ${e.nom} ? Elle reviendra à la prochaine recherche : pour ne plus la voir, choisissez plutôt le statut « Écartée ».`
+    : `Supprimer ${e.nom} de l'annuaire ?`;
+  if (!confirm(msg)) return;
+  run(async () => {
+    await api('DELETE', `annuaire/${e.id}`);
+    state.annuaire = state.annuaire.filter((x) => x.id !== e.id);
+    $('#dlg-ann').close();
+    renderAnnuaire();
+  });
+});
+
+// Ouvre une candidature spontanée pré-remplie avec cette entreprise.
+$('#btn-ann-spontanee').addEventListener('click', () => {
+  const form = $('#form-ann');
+  const nom = form.nom.value.trim();
+  if (!nom) { form.nom.focus(); return; }
+  const contact = [form.contact.value, form.telephone.value, form.email.value].map((s) => s.trim()).filter(Boolean).join(' · ');
+  $('#dlg-ann').close();
+  openOffre();
+  setOffreType('spontanee');
+  const f = $('#form-offre');
+  f.entreprise.value = nom;
+  f.lieu.value = form.commune.value.trim();
+  f.contact.value = contact;
+  $('#dlg-offre-title').textContent = 'Nouvelle candidature spontanée';
+});
+
+$('#form-zone').addEventListener('change', (e) => {
+  if (!e.target.name) return;
+  const form = e.currentTarget;
+  const values = {
+    annuaireVille: form.annuaireVille.value.trim(),
+    annuaireRayon: Math.min(Math.max(parseInt(form.annuaireRayon.value, 10) || 20, 1), 100),
+  };
+  saveQueue = saveQueue.then(() => run(async () => {
+    state.reglages = await api('PUT', 'reglages', values);
+    renderZone();
+  }));
+});
+$('#form-zone').addEventListener('submit', (e) => e.preventDefault());
+$('#ann-search').addEventListener('input', renderAnnuaire);
+['#ann-statut', '#ann-cible', '#ann-tri'].forEach((s) => $(s).addEventListener('change', renderAnnuaire));
+$('#ann-statut').innerHTML = '<option value="">Tous les statuts (sauf écartées)</option>'
+  + STATUTS_ANNUAIRE.map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('')
+  + '<option value="tous">Toutes, écartées comprises</option>';
+
 // ---------- Vue documents ----------
 
 const DOC_TYPES = { cv: 'CV', lettre: 'Lettre', modele: 'Modèle' };
@@ -1035,6 +1301,7 @@ $('#form-profil').addEventListener('change', (e) => {
     state.reglages = await api('PUT', 'reglages', values);
     renderProfil();
     renderOffres();
+    renderZone();
     toast('Profil enregistré');
   }));
 });
@@ -1116,14 +1383,30 @@ function showView(name) {
 }
 
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('button, a, .stat, [data-edit-offre], [data-entreprise]');
+  const t = e.target.closest('button, a, .stat, [data-edit-offre], [data-entreprise], [data-edit-ann]');
   if (!t) return;
   const ds = t.dataset;
 
   if (t.matches('[data-close]')) t.closest('dialog').close();
   if (t.id === 'btn-add-offre') openOffre();
   if (t.id === 'btn-add-doc') openDoc();
-  if (ds.editOffre) { e.preventDefault(); openOffre(ds.editOffre); }
+  if (ds.editOffre) {
+    e.preventDefault();
+    if (t.closest('#dlg-ann')) $('#dlg-ann').close(); // lien vers une candidature depuis l'annuaire
+    openOffre(ds.editOffre);
+  }
+  if (t.id === 'btn-add-ann') openAnn();
+  if (ds.editAnn) openAnn(ds.editAnn);
+  if (ds.chercher) chercherAnnuaire(ds.chercher);
+  if (ds.ecarterAnn) {
+    const ent = state.annuaire.find((x) => x.id === ds.ecarterAnn);
+    run(async () => { if (await enregistrerAnn({ ...ent, statut: 'ecarte' })) toast(`${ent.nom} écartée`); });
+  }
+  if (ds.choisirOfficiel) choisirOfficiel(Number(ds.choisirOfficiel));
+  if (ds.delAnnHisto) {
+    editingAnn.historique = editingAnn.historique.filter((h) => h.id !== ds.delAnnHisto);
+    renderAnnHistorique();
+  }
   if (ds.editDoc) openDoc(ds.editDoc);
   if (ds.lettre) openLettre(ds.lettre);
 
@@ -1216,6 +1499,8 @@ document.addEventListener('keydown', (e) => {
 function renderAll() {
   renderOffres();
   renderEntreprises();
+  renderZone();
+  renderAnnuaire();
   renderDocs();
   renderSettings();
 }

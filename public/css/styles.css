@@ -321,3 +321,19 @@ a.btn { text-decoration: none; display: inline-block; }
 .entretiens .actions-ent { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .r-avenir { background: #f6e3a6; color: #6b4e00; }
 .r-passe { background: #e4e3df; color: #3d4144; }
+
+/* Annuaire des entreprises */
+.section-titre { font-size: 18px; margin: 8px 0 12px; }
+.section-titre:not(:first-child) { margin-top: 32px; }
+.zone input[name=annuaireVille] { width: 160px; }
+.zone input[name=annuaireRayon] { width: 70px; }
+.a-a_etudier     { background: #e4e3df; color: #3d4144; }
+.a-a_contacter   { background: #f6e3a6; color: #6b4e00; }
+.a-contacte      { background: #d9e3ec; color: #24435e; }
+.a-pas_interesse { background: #f2d6d2; color: #85281d; }
+.a-ecarte        { background: #e9e9e9; color: #6b6f73; }
+@media (max-width: 700px) { .zone .btn { width: 100%; } }
+.choix-officiel { list-style: none; padding: 0; margin: -4px 0 12px; max-height: 260px; overflow-y: auto; }
+.choix-officiel button { display: block; width: 100%; text-align: left; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px; margin-bottom: 4px; cursor: pointer; font: inherit; }
+.choix-officiel button:hover { border-color: var(--accent); }
+.choix-officiel .sub { display: block; color: var(--muted); font-size: 13px; }

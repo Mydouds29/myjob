@@ -62,6 +62,43 @@
 
     <!-- Vue entreprises -->
     <section id="view-entreprises" class="view" hidden>
+      <h2 class="section-titre">Annuaire des entreprises à démarcher</h2>
+      <form id="form-zone" class="toolbar zone">
+        <span>Autour de</span>
+        <input name="annuaireVille" placeholder="ville" size="14">
+        <input name="annuaireRayon" type="number" min="1" max="100" size="4"> <span>km</span>
+        <button type="button" class="btn" data-chercher="informatique" title="ESN, maintenance, hébergeurs, revendeurs, télécoms : au moins 1 salarié sur place">Chercher les entreprises d'informatique</button>
+        <button type="button" class="btn" data-chercher="grands" title="Hôpitaux, collectivités, banques, industriels… : au moins 100 salariés sur place">Chercher les grands employeurs</button>
+      </form>
+      <p id="annuaire-attente" class="alert" hidden></p>
+      <div class="toolbar">
+        <input id="ann-search" type="search" placeholder="Rechercher (nom, activité, commune, contact, notes…)">
+        <select id="ann-statut"></select>
+        <select id="ann-cible">
+          <option value="">Toutes les catégories</option>
+          <option value="informatique">Informatique</option>
+          <option value="grands">Grands employeurs</option>
+          <option value="manuel">Ajoutées à la main</option>
+        </select>
+        <select id="ann-tri">
+          <option value="distance">Les plus proches d'abord</option>
+          <option value="taille">Les plus grandes d'abord</option>
+          <option value="nom">Nom (A→Z)</option>
+          <option value="contact">Dernier contact</option>
+        </select>
+        <button id="btn-add-ann" class="btn primary">+ Ajouter une entreprise</button>
+      </div>
+      <div class="table-wrap">
+        <table class="list">
+          <thead>
+            <tr><th>Entreprise</th><th>Lieu</th><th>Taille sur place</th><th>Suivi</th><th></th></tr>
+          </thead>
+          <tbody id="annuaire-body"></tbody>
+        </table>
+        <p id="annuaire-empty" class="empty" hidden></p>
+      </div>
+
+      <h2 class="section-titre">Entreprises de vos candidatures</h2>
       <div class="toolbar">
         <p class="hint">Toutes les entreprises contactées, avec la date du dernier échange. Cliquez sur une entreprise pour voir ses candidatures.</p>
       </div>
@@ -362,6 +399,50 @@
   </dialog>
 
   <!-- Formulaire document -->
+  <dialog id="dlg-ann">
+    <form id="form-ann" method="dialog">
+      <h2 id="dlg-ann-title">Entreprise</h2>
+      <div id="ann-recherche-nom" class="lien-annonce">
+        <label>Chercher dans l'annuaire officiel des entreprises
+          <span class="row">
+            <input id="ann-q" placeholder="nom, ex. université de brest">
+            <button type="button" id="btn-ann-q" class="btn primary">Chercher</button>
+          </span>
+        </label>
+        <ul id="ann-q-resultats" class="choix-officiel"></ul>
+      </div>
+      <p id="ann-officiel" class="hint"></p>
+      <div class="grid">
+        <label>Nom *<input name="nom" required></label>
+        <label>Statut<select name="statut"></select></label>
+        <label>Activité<input name="activiteLibelle" placeholder="ex. maintenance informatique"></label>
+        <label>Commune<input name="commune"></label>
+        <label>Adresse<input name="adresse"></label>
+        <label>Site web<input name="site" type="url" placeholder="https://"></label>
+        <label>Personne à contacter<input name="contact" placeholder="nom, fonction"></label>
+        <label>Téléphone<input name="telephone" type="tel"></label>
+        <label>E-mail<input name="email" type="email"></label>
+      </div>
+      <label>Notes<textarea name="notes" rows="3" placeholder="ce qu'elle fait, pourquoi elle m'intéresse, comment l'approcher…"></textarea></label>
+      <details id="ann-section-historique" open>
+        <summary>Échanges</summary>
+        <ul id="ann-historique" class="historique"></ul>
+        <div class="row">
+          <input id="ann-histo-date" type="date">
+          <input id="ann-histo-texte" placeholder="ex. CV déposé à l'accueil, appel au responsable informatique…">
+          <button type="button" id="btn-ann-histo-add" class="btn">Ajouter</button>
+        </div>
+      </details>
+      <p id="ann-candidatures" class="hint"></p>
+      <div class="dlg-actions">
+        <button type="button" id="btn-ann-suppr" class="btn danger">Supprimer</button>
+        <button type="button" id="btn-ann-spontanee" class="btn">Candidature spontanée</button>
+        <button type="button" class="btn ghost" data-close>Annuler</button>
+        <button type="submit" class="btn primary">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="dlg-doc">
     <form id="form-doc" method="dialog">
       <h2 id="dlg-doc-title">Nouveau document</h2>
