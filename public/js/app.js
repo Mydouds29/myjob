@@ -903,6 +903,7 @@ function renderAnnuaire() {
       <td><span class="badge a-${esc(e.statut)}">${esc(statutAnnLabel(e.statut))}</span>${suivi ? `<div class="sub">${suivi}</div>` : ''}</td>
       <td class="actions">
         ${fiche ? `<a class="btn small" href="${esc(fiche)}" target="_blank" rel="noopener" title="Fiche dans l'annuaire officiel des entreprises">Fiche</a>` : ''}
+        ${['a_etudier', 'ecarte'].includes(e.statut) ? `<button class="btn small primary" data-valider-ann="${esc(e.id)}" title="La passer en « À contacter »">Valider</button>` : ''}
         ${e.statut === 'ecarte' ? '' : `<button class="btn small" data-ecarter-ann="${esc(e.id)}" title="Ne plus l'afficher (elle ne reviendra pas aux prochaines recherches)">Écarter</button>`}
       </td>
     </tr>`;
@@ -1398,6 +1399,10 @@ document.addEventListener('click', (e) => {
   if (t.id === 'btn-add-ann') openAnn();
   if (ds.editAnn) openAnn(ds.editAnn);
   if (ds.chercher) chercherAnnuaire(ds.chercher);
+  if (ds.validerAnn) {
+    const ent = state.annuaire.find((x) => x.id === ds.validerAnn);
+    run(async () => { if (await enregistrerAnn({ ...ent, statut: 'a_contacter' })) toast(`${ent.nom} : à contacter`); });
+  }
   if (ds.ecarterAnn) {
     const ent = state.annuaire.find((x) => x.id === ds.ecarterAnn);
     run(async () => { if (await enregistrerAnn({ ...ent, statut: 'ecarte' })) toast(`${ent.nom} écartée`); });
